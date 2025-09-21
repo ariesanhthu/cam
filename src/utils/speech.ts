@@ -1,0 +1,140 @@
+// Normalize Vietnamese text
+export const normalizeVN = (str: string): string => {
+  return (str || '').toLowerCase()
+    .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+};
+
+// Check if text contains trigger word
+export const containsTriggerWord = (text: string): boolean => {
+  const normalized = normalizeVN(text);
+  const hasTrigger = normalized.includes('ban oi') || normalized.includes('ban ơi');
+  console.log('containsTriggerWord check:', { text, normalized, hasTrigger });
+  return hasTrigger;
+};
+
+// Text to speech
+export const speakText = async (
+  text: string, 
+  settings: { voiceRate: number; voiceVolume: number },
+  recognitionRef?: any,
+  shouldAutoListenRef?: any,
+  onEnd?: () => void
+): Promise<void> => {
+  if (!('speechSynthesis' in window)) return;
+  
+  console.log('=== SPEAK TEXT DEBUG ===');
+  console.log('Speaking text:', text);
+  console.log('Stopping speech recognition...');
+  
+  // Tạm dừng speech recognition để tránh feedback
+  if (recognitionRef?.current) {
+    try { 
+      recognitionRef.current.stop(); 
+      console.log('Speech recognition stopped');
+    } catch (_) {}
+  }
+  
+  // Tắt auto listen trong lúc đọc
+  if (shouldAutoListenRef) {
+    shouldAutoListenRef.current = false;
+    console.log('Auto listen disabled');
+  }
+  
+  speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'vi-VN';
+  utterance.rate = settings.voiceRate;
+  utterance.volume = settings.voiceVolume;
+  
+  utterance.onstart = () => {
+    console.log('Speech synthesis started');
+    };
+    
+  utterance.onend = () => {
+    console.log('Speech synthesis ended');
+    
+    // Call onEnd callback nếu có
+    onEnd?.();
+    
+    // Tiếp tục speech recognition sau khi đọc xong với delay dài hơn
+    if (recognitionRef?.current && shouldAutoListenRef) {
+      setTimeout(() => {
+        console.log('Restarting speech recognition after TTS...');
+        shouldAutoListenRef.current = true;
+        try { recognitionRef.current.start(); } catch (_) {}
+      }, 2000); // Tăng delay lên 2 giây
+    }
+  };
+  
+  speechSynthesis.speak(utterance);
+  console.log('=== END SPEAK TEXT DEBUG ===');
+};
+
+// Speak result with callbacks
+export const speakResult = async (
+  text: string,
+  settings: { voiceRate: number; voiceVolume: number },
+  onStart?: () => void,
+  onEnd?: () => void,
+  recognitionRef?: any,
+  shouldAutoListenRef?: any,
+  lastTTSEndTimeRef?: any
+): Promise<void> => {
+  if (!('speechSynthesis' in window)) {
+    throw new Error('Trình duyệt không hỗ trợ đọc văn bản');
+  }
+
+  console.log('=== SPEAK RESULT DEBUG ===');
+  console.log('Speaking result:', text);
+  console.log('Stopping speech recognition...');
+
+  // Tạm dừng speech recognition để tránh feedback
+  if (recognitionRef?.current) {
+    try { 
+      recognitionRef.current.stop(); 
+      console.log('Speech recognition stopped');
+    } catch (_) {}
+  }
+
+  // Tắt auto listen trong lúc đọc
+  if (shouldAutoListenRef) {
+    shouldAutoListenRef.current = false;
+    console.log('Auto listen disabled');
+  }
+
+  speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'vi-VN';
+  utterance.rate = settings.voiceRate;
+  utterance.volume = settings.voiceVolume;
+  
+  utterance.onstart = () => {
+    console.log('Speech synthesis started');
+    onStart?.();
+  };
+  
+  utterance.onend = () => {
+    console.log('Speech synthesis ended');
+    
+    // Set timestamp khi TTS kết thúc
+    if (lastTTSEndTimeRef) {
+      lastTTSEndTimeRef.current = Date.now();
+      console.log('TTS end timestamp set:', lastTTSEndTimeRef.current);
+    }
+    
+    onEnd?.();
+    // Tiếp tục speech recognition sau khi đọc xong với delay dài hơn
+    if (recognitionRef?.current && shouldAutoListenRef) {
+      setTimeout(() => {
+        console.log('Restarting speech recognition after TTS...');
+        shouldAutoListenRef.current = true;
+        try { recognitionRef.current.start(); } catch (_) {}
+      }, 2000); // Tăng delay lên 2 giây
+    }
+  };
+  
+  speechSynthesis.speak(utterance);
+  console.log('=== END SPEAK RESULT DEBUG ===');
+};

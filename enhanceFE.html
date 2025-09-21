@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Điều khiển bằng giọng nói - ESP32</title>
+  <style>
+    :root {
+      --primary: #0ea5e9;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --bg: #ffffff;
+      --text: #000000;
+      --border: #e5e7eb;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #000000;
+        --text: #ffffff;
+        --border: #374151;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Main Screen - Chỉ có 1 nút */
+    .main-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .voice-button {
+      width: min(400px, 80vw);
+      height: min(400px, 80vw);
+      border-radius: 50%;
+      border: none;
+      background: linear-gradient(135deg, var(--primary), #0284c7);
+      color: white;
+      font-size: clamp(24px, 6vw, 32px);
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 10px 40px rgba(14, 165, 233, 0.3);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+    }
+
+    .voice-button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 15px 50px rgba(14, 165, 233, 0.4);
+    }
+
+    .voice-button:active {
+      transform: scale(0.98);
+    }
+
+    .voice-button.listening {
+      background: linear-gradient(135deg, var(--danger), #dc2626);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 10px 40px rgba(239, 68, 68, 0.3); }
+      50% { box-shadow: 0 10px 60px rgba(239, 68, 68, 0.6); }
+    }
+
+    .voice-icon {
+      font-size: clamp(60px, 15vw, 100px);
+    }
+
+    .voice-status {
+      font-size: clamp(18px, 4vw, 24px);
+      margin-top: 30px;
+      padding: 15px 30px;
+      background: rgba(0, 0, 0, 0.1);
+      border-radius: 30px;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Settings Button */
+    .settings-btn {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 24px;
+      cursor: pointer;
+      z-index: 1000;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .settings-btn:focus {
+      outline: 3px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    /* Settings Panel */
+    .settings-panel {
+      position: fixed;
+      top: 0;
+      right: -100%;
+      width: 100%;
+      max-width: 500px;
+      height: 100vh;
+      background: var(--bg);
+      border-left: 1px solid var(--border);
+      transition: right 0.3s ease;
+      overflow-y: auto;
+      z-index: 999;
+      padding: 80px 20px 20px;
+    }
+
+    .settings-panel.open {
+      right: 0;
+      box-shadow: -5px 0 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .settings-close {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 50px;
+      height: 50px;
+      border: 2px solid var(--border);
+      background: var(--bg);
+      border-radius: 50%;
+      font-size: 24px;
+      cursor: pointer;
+    }
+
+    /* Settings Form */
+    .settings-group {
+      margin-bottom: 30px;
+      padding: 20px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .settings-title {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 15px;
+      color: var(--primary);
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    input[type="text"],
+    input[type="url"],
+    select {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      font-size: 16px;
+      background: var(--bg);
+      color: var(--text);
+      margin-bottom: 15px;
+    }
+
+    input:focus,
+    select:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    input[type="checkbox"] {
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+    }
+
+    .test-btn {
+      width: 100%;
+      padding: 15px;
+      background: var(--warning);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    /* Notification */
+    .notification {
+      position: fixed;
+      bottom: -100px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--success);
+      color: white;
+      padding: 15px 30px;
+      border-radius: 30px;
+      font-size: 16px;
+      font-weight: 500;
+      transition: bottom 0.3s ease;
+      z-index: 2000;
+      max-width: 80%;
+      text-align: center;
+    }
+
+    .notification.show {
+      bottom: 30px;
+    }
+
+    .notification.error {
+      background: var(--danger);
+    }
+
+    /* Hidden elements */
+    .hidden {
+      display: none !important;
+    }
+
+    /* Gallery (ẩn mặc định) */
+    #stream, #gallery {
+      display: none;
+    }
+
+    /* Accessibility */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      white-space: nowrap;
+      border-width: 0;
+    }
+
+    /* High contrast mode support */
+    @media (prefers-contrast: high) {
+      .voice-button {
+        border: 4px solid white;
+      }
+      .settings-btn {
+        border: 3px solid var(--text);
+      }
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* Dark mode adjustments */
+    @media (prefers-color-scheme: dark) {
+      .voice-status {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .settings-panel {
+        background: #111111;
+      }
+      input, select {
+        background: #1a1a1a;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Main Voice Control Screen -->
+  <div class="main-screen">
+    <button id="voiceBtn" class="voice-button" aria-label="Bấm để bật điều khiển giọng nói">
+      <span class="voice-icon" aria-hidden="true">🎙️</span>
+      <span id="btnText">Bấm để nói</span>
+    </button>
+    
+    <div class="voice-status" role="status" aria-live="polite">
+      <span id="status">Sẵn sàng</span>
+    </div>
+  </div>
+
+  <!-- Settings Button -->
+  <button class="settings-btn" id="settingsBtn" aria-label="Mở cài đặt">⚙️</button>
+
+  <!-- Settings Panel -->
+  <div class="settings-panel" id="settingsPanel" role="dialog" aria-label="Bảng cài đặt">
+    <button class="settings-close" id="settingsClose" aria-label="Đóng cài đặt">✕</button>
+    
+    <div class="settings-group">
+      <h2 class="settings-title">ESP32 Camera</h2>
+      <label for="baseStream">Stream URL (ví dụ: http://192.168.1.100:81)</label>
+      <input type="url" id="baseStream" placeholder="http://192.168.1.100:81" />
+      
+      <label for="baseCapture">Capture URL (ví dụ: http://192.168.1.100)</label>
+      <input type="url" id="baseCapture" placeholder="http://192.168.1.100" />
+      
+      <label for="pathStream">Stream path</label>
+      <input type="text" id="pathStream" value="/stream" />
+      
+      <label for="pathCapture">Capture path</label>
+      <input type="text" id="pathCapture" value="/capture" />
+
+      <div class="checkbox-group">
+        <input type="checkbox" id="chkFallbackDeviceCam" checked />
+        <label for="chkFallbackDeviceCam">Dùng camera thiết bị nếu ESP32 không kết nối</label>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h2 class="settings-title">Backend Server</h2>
+      <label for="baseBackend">Backend URL (ví dụ: http://192.168.1.2:5000)</label>
+      <input type="url" id="baseBackend" placeholder="http://192.168.1.2:5000" />
+      
+      <label for="pathBackend">Analyze path</label>
+      <input type="text" id="pathBackend" value="/analyze" />
+      
+      <div class="checkbox-group">
+        <input type="checkbox" id="chkAutoSend" checked />
+        <label for="chkAutoSend">Tự động gửi ảnh sau khi chụp</label>
+      </div>
+      
+      <div class="checkbox-group">
+        <input type="checkbox" id="chkAutoListen" checked />
+        <label for="chkAutoListen">Tự động nghe liên tục (stream lệnh)</label>
+      </div>
+      
+      <div class="checkbox-group">
+        <input type="checkbox" id="chkSpeak" checked />
+        <label for="chkSpeak">Đọc kết quả phân tích</label>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h2 class="settings-title">Giọng đọc</h2>
+      <label for="voiceSelect">Chọn giọng</label>
+      <select id="voiceSelect"></select>
+      
+      <label for="rate">Tốc độ đọc</label>
+      <input type="range" id="rate" min="0.7" max="1.4" step="0.05" value="1" />
+      
+      <label for="volume">Âm lượng</label>
+      <input type="range" id="volume" min="0" max="1" step="0.05" value="1" />
+    </div>
+
+    <div class="settings-group">
+      <button class="test-btn" id="testBtn">Kiểm tra kết nối</button>
+    </div>
+  </div>
+
+  <!-- Notification -->
+  <div class="notification" id="notification" role="alert"></div>
+
+  <!-- Hidden elements for functionality -->
+  <img id="stream" class="hidden" alt="ESP32 stream" />
+  <div id="gallery" class="hidden"></div>
+  <textarea id="backendResult" class="hidden"></textarea>
+
+  <script>
+    // ===== Utilities =====
+    const $ = sel => document.querySelector(sel);
+    const $$ = sel => document.querySelectorAll(sel);
+
+    function normalizeVN(str) {
+      return (str || '').toLowerCase()
+        .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ').trim();
+    }
+
+    function joinUrl(base, path) {
+      if (!base) return '';
+      if (!path) return base;
+      const b = base.endsWith('/') ? base.slice(0, -1) : base;
+      const p = path.startsWith('/') ? path : '/' + path;
+      return b + p;
+    }
+
+    function showNotification(message, type = 'success') {
+      const notif = $('#notification');
+      notif.textContent = message;
+      notif.className = 'notification show ' + (type === 'error' ? 'error' : '');
+      setTimeout(() => notif.classList.remove('show'), 3000);
+      
+      // Đọc thông báo cho người khiếm thị
+      if (speechSynthesis && speechSynthesis.speaking) {
+        speechSynthesis.cancel();
+      }
+      const utterance = new SpeechSynthesisUtterance(message);
+      utterance.lang = 'vi-VN';
+      utterance.rate = 1.2;
+      speechSynthesis.speak(utterance);
+    }
+
+    // ===== Settings Management =====
+    const settingsBtn = $('#settingsBtn');
+    const settingsPanel = $('#settingsPanel');
+    const settingsClose = $('#settingsClose');
+
+    settingsBtn.addEventListener('click', () => {
+      settingsPanel.classList.add('open');
+      settingsClose.focus();
+    });
+
+    settingsClose.addEventListener('click', () => {
+      settingsPanel.classList.remove('open');
+      settingsBtn.focus();
+    });
+
+    // Escape key to close settings
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && settingsPanel.classList.contains('open')) {
+        settingsPanel.classList.remove('open');
+        settingsBtn.focus();
+      }
+    });
+
+    // ===== Load/Save Settings =====
+    const settings = [
+      ['baseStream', 'http://192.168.1.100:81'],
+      ['baseCapture', 'http://192.168.1.100'],
+      ['pathStream', '/stream'],
+      ['pathCapture', '/capture'],
+      ['baseBackend', 'http://192.168.1.2:5000'],
+      ['pathBackend', '/analyze']
+    ];
+
+    settings.forEach(([id, defaultValue]) => {
+      const el = $('#' + id);
+      const saved = localStorage.getItem('esp32_' + id);
+      if (saved) el.value = saved;
+      else if (defaultValue) el.value = defaultValue;
+      el.addEventListener('change', () => 
+        localStorage.setItem('esp32_' + id, el.value.trim())
+      );
+    });
+
+    ['chkAutoSend', 'chkSpeak', 'chkAutoListen', 'chkFallbackDeviceCam'].forEach(id => {
+      const el = $('#' + id);
+      const saved = localStorage.getItem('esp32_' + id);
+      if (saved !== null) el.checked = saved === '1';
+      el.addEventListener('change', () => 
+        localStorage.setItem('esp32_' + id, el.checked ? '1' : '0')
+      );
+    });
+
+    // ===== Main Voice Button =====
+    const voiceBtn = $('#voiceBtn');
+    const btnText = $('#btnText');
+    const statusEl = $('#status');
+    let isListening = false;
+    let recognition = null;
+    let lastCaptureTime = 0;
+    let shouldAutoListen = false; // tự khởi động lại nghe sau khi đã bật
+    let isAwaitingRequest = false; // đang chờ người dùng nêu yêu cầu sau khi gọi "Bạn ơi!"
+    let pendingUserRequest = '';
+
+    // ===== Speech Recognition Setup =====
+    function setupRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        statusEl.textContent = 'Trình duyệt không hỗ trợ nhận diện giọng nói';
+        showNotification('Vui lòng dùng Chrome hoặc Edge', 'error');
+        return;
+      }
+
+      recognition = new SpeechRecognition();
+      recognition.lang = 'vi-VN';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      recognition.onstart = () => {
+        isListening = true;
+        voiceBtn.classList.add('listening');
+        btnText.textContent = 'Đang nghe...';
+        statusEl.textContent = 'Hãy nói: "Bạn ơi!"';
+      };
+
+      recognition.onend = () => {
+        isListening = false;
+        voiceBtn.classList.remove('listening');
+        btnText.textContent = 'Bấm để nói';
+        statusEl.textContent = 'Đã dừng nghe';
+        if (shouldAutoListen) {
+          try { recognition.start(); } catch (_) {}
+        }
+      };
+
+      recognition.onerror = (event) => {
+        isListening = false;
+        voiceBtn.classList.remove('listening');
+        btnText.textContent = 'Bấm để nói';
+        
+        if (event.error === 'no-speech') {
+          statusEl.textContent = 'Không nghe thấy giọng nói';
+        } else if (event.error === 'not-allowed') {
+          statusEl.textContent = 'Vui lòng cho phép sử dụng microphone';
+        } else {
+          statusEl.textContent = 'Lỗi: ' + event.error;
+        }
+      };
+
+      recognition.onresult = (event) => {
+        let finalTranscript = '';
+        let interimTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + ' ';
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        const text = finalTranscript || interimTranscript;
+        if (text) {
+          statusEl.textContent = 'Nghe được: ' + text.trim();
+
+          const normalized = normalizeVN(text);
+          const wakeWord = 'ban oi';
+
+          // 1) Đánh thức bằng "Bạn ơi!"
+          if (!isAwaitingRequest && normalized.includes(wakeWord)) {
+            isAwaitingRequest = true;
+            pendingUserRequest = '';
+            speakText('Bạn cần giúp gì?');
+            statusEl.textContent = 'Đang chờ yêu cầu...';
+            return;
+          }
+
+          // 2) Nếu đang chờ yêu cầu: lấy câu hoàn chỉnh tiếp theo (final) làm prompt
+          if (isAwaitingRequest && finalTranscript.trim()) {
+            pendingUserRequest = finalTranscript.trim();
+            isAwaitingRequest = false;
+
+            const now = Date.now();
+            if (now - lastCaptureTime > 1500) {
+              lastCaptureTime = now;
+              capturePhoto(pendingUserRequest);
+            }
+          }
+        }
+      };
+    }
+
+    // ===== Start/Stop Listening Helpers =====
+    async function startListening() {
+      if (!recognition) {
+        setupRecognition();
+        if (!recognition) return;
+      }
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        shouldAutoListen = true;
+        if (!isListening) recognition.start();
+      } catch (err) {
+        showNotification('Vui lòng cho phép sử dụng microphone', 'error');
+      }
+    }
+
+    function stopListening() {
+      shouldAutoListen = false;
+      if (recognition && isListening) {
+        try { recognition.stop(); } catch (_) {}
+      }
+    }
+
+    // ===== Voice Button Click Handler (thủ công nếu cần) =====
+    voiceBtn.addEventListener('click', async () => {
+      if (!recognition) {
+        setupRecognition();
+        if (!recognition) return;
+      }
+
+      if (isListening) {
+        stopListening();
+      } else {
+        await startListening();
+      }
+    });
+
+    // ===== Capture Photo =====
+    async function captureFromDeviceCamera() {
+      // chụp khung hình từ camera thiết bị, trả về Blob image/jpeg
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      try {
+        const track = stream.getVideoTracks()[0];
+        const imageCapture = ('ImageCapture' in window) ? new ImageCapture(track) : null;
+        let blob;
+        if (imageCapture && imageCapture.takePhoto) {
+          blob = await imageCapture.takePhoto();
+        } else {
+          // fallback vẽ khung hình vào canvas
+          const video = document.createElement('video');
+          video.srcObject = stream;
+          await new Promise(r => video.onloadedmetadata = r);
+          video.play();
+          await new Promise(r => setTimeout(r, 150));
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+          const res = await fetch(dataUrl);
+          blob = await res.blob();
+        }
+        return blob;
+      } finally {
+        stream.getTracks().forEach(t => t.stop());
+      }
+    }
+
+    async function capturePhoto(promptText) {
+      const captureUrl = joinUrl($('#baseCapture').value.trim(), $('#pathCapture').value.trim());
+      
+      const allowFallback = $('#chkFallbackDeviceCam').checked || localStorage.getItem('esp32_chkFallbackDeviceCam') === '1';
+
+      statusEl.textContent = 'Đang chụp ảnh...';
+      showNotification('Đang chụp ảnh...');
+
+      try {
+        let blob;
+        if (captureUrl) {
+          const response = await fetch(captureUrl, { mode: 'cors', cache: 'no-store' });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          blob = await response.blob();
+          if (!blob.type.startsWith('image/')) throw new Error('Không phải ảnh');
+        } else if (allowFallback) {
+          blob = await captureFromDeviceCamera();
+        } else {
+          throw new Error('Chưa cài đặt địa chỉ camera');
+        }
+
+        showNotification('Đã chụp ảnh thành công');
+        statusEl.textContent = 'Chụp ảnh thành công';
+
+        // Nếu có prompt thì luôn gửi; nếu không, tôn trọng cài đặt tự động
+        if (promptText && String(promptText).trim()) {
+          await sendToBackend(blob, String(promptText).trim());
+        } else if ($('#chkAutoSend').checked) {
+          await sendToBackend(blob);
+        }
+      } catch (err) {
+        // Nếu lỗi khi gọi ESP32 và cho phép fallback => thử camera thiết bị
+        const allowFallback = $('#chkFallbackDeviceCam').checked || localStorage.getItem('esp32_chkFallbackDeviceCam') === '1';
+        if (allowFallback) {
+          try {
+            const blob = await captureFromDeviceCamera();
+            showNotification('Đã chụp bằng camera thiết bị');
+            statusEl.textContent = 'Chụp ảnh thành công (thiết bị)';
+            if (promptText && String(promptText).trim()) {
+              await sendToBackend(blob, String(promptText).trim());
+            } else if ($('#chkAutoSend').checked) {
+              await sendToBackend(blob);
+            }
+            return;
+          } catch (e2) {
+            showNotification('Lỗi chụp ảnh thiết bị: ' + e2.message, 'error');
+            statusEl.textContent = 'Lỗi chụp ảnh';
+            return;
+          }
+        }
+        showNotification('Lỗi chụp ảnh: ' + err.message, 'error');
+        statusEl.textContent = 'Lỗi chụp ảnh';
+      }
+    }
+
+    // ===== Send to Backend =====
+    async function sendToBackend(blob, promptText) {
+      const backendUrl = joinUrl($('#baseBackend').value.trim(), $('#pathBackend').value.trim());
+      
+      if (!backendUrl) {
+        showNotification('Chưa cài đặt địa chỉ server', 'error');
+        return;
+      }
+
+      statusEl.textContent = 'Đang gửi ảnh phân tích...';
+      
+      const formData = new FormData();
+      const file = new File([blob], 'capture.jpg', { type: blob.type || 'image/jpeg' });
+      formData.append('file', file);
+      if (promptText && String(promptText).trim()) {
+        formData.append('prompt', String(promptText).trim());
+      }
+
+      try {
+        const response = await fetch(backendUrl, {
+          method: 'POST',
+          body: formData,
+          mode: 'cors'
+        });
+
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        
+        const contentType = response.headers.get('content-type') || '';
+        let result = '';
+        
+        if (contentType.includes('application/json')) {
+          const data = await response.json();
+          result = data.text || data.result || data.message || '';
+        } else {
+          result = await response.text();
+        }
+
+        result = String(result || '').trim();
+        
+        if (result) {
+          $('#backendResult').value = result;
+          statusEl.textContent = 'Đã nhận kết quả';
+          
+          if ($('#chkSpeak').checked) {
+            await speakResult(result);
+          }
+        }
+      } catch (err) {
+        showNotification('Lỗi gửi ảnh: ' + err.message, 'error');
+        statusEl.textContent = 'Lỗi gửi ảnh';
+      }
+    }
+
+    // ===== Text to Speech =====
+    const synth = window.speechSynthesis;
+    let voices = [];
+
+    function loadVoices() {
+      voices = synth.getVoices();
+      const voiceSelect = $('#voiceSelect');
+      voiceSelect.innerHTML = '';
+      
+      const viVoices = voices.filter(v => v.lang.startsWith('vi'));
+      const otherVoices = voices.filter(v => !v.lang.startsWith('vi'));
+      
+      [...viVoices, ...otherVoices].forEach(voice => {
+        const option = document.createElement('option');
+        option.value = voice.name;
+        option.textContent = `${voice.name} (${voice.lang})`;
+        voiceSelect.appendChild(option);
+      });
+      
+      if (viVoices.length > 0) {
+        voiceSelect.value = viVoices[0].name;
+      }
+    }
+
+    if (synth) {
+      loadVoices();
+      synth.onvoiceschanged = loadVoices;
+    }
+
+    // Hàm nói chung cho trợ lý (không can thiệp logic kết quả)
+    async function speakText(text) {
+      if (!synth) return;
+      synth.cancel();
+      const utterance = new SpeechSynthesisUtterance(String(text));
+      const selectedVoice = voices.find(v => v.name === $('#voiceSelect').value);
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+        utterance.lang = selectedVoice.lang;
+      } else {
+        utterance.lang = 'vi-VN';
+      }
+      utterance.rate = parseFloat($('#rate').value);
+      utterance.volume = parseFloat($('#volume').value);
+      synth.speak(utterance);
+    }
+
+    async function speakResult(text) {
+      if (!synth) {
+        showNotification('Trình duyệt không hỗ trợ đọc văn bản', 'error');
+        return;
+      }
+
+      synth.cancel();
+      
+      const utterance = new SpeechSynthesisUtterance(text);
+      const selectedVoice = voices.find(v => v.name === $('#voiceSelect').value);
+      
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+        utterance.lang = selectedVoice.lang;
+      } else {
+        utterance.lang = 'vi-VN';
+      }
+      
+      utterance.rate = parseFloat($('#rate').value);
+      utterance.volume = parseFloat($('#volume').value);
+      
+      utterance.onstart = () => {
+        statusEl.textContent = 'Đang đọc kết quả...';
+      };
+      
+      utterance.onend = () => {
+        statusEl.textContent = 'Hoàn tất';
+      };
+      
+      synth.speak(utterance);
+    }
+
+    // ===== Test Connection =====
+    $('#testBtn').addEventListener('click', async () => {
+      showNotification('Đang kiểm tra kết nối...');
+      
+      const tests = [];
+      
+      // Test stream
+      const streamUrl = joinUrl($('#baseStream').value.trim(), $('#pathStream').value.trim());
+      if (streamUrl) {
+        tests.push(fetch(streamUrl, { mode: 'no-cors' })
+          .then(() => 'Stream: OK')
+          .catch(() => 'Stream: Lỗi'));
+      }
+      
+      // Test capture
+      const captureUrl = joinUrl($('#baseCapture').value.trim(), $('#pathCapture').value.trim());
+      if (captureUrl) {
+        tests.push(fetch(captureUrl, { mode: 'cors', cache: 'no-store' })
+          .then(() => 'Capture: OK')
+          .catch(() => 'Capture: Lỗi'));
+      }
+      
+      // Test backend
+      const backendBase = $('#baseBackend').value.trim();
+      if (backendBase) {
+        tests.push(fetch(backendBase + '/ping', { mode: 'cors' })
+          .then(() => 'Backend: OK')
+          .catch(() => 'Backend: Lỗi'));
+      }
+      
+      const results = await Promise.all(tests);
+      showNotification(results.join(', '));
+    });
+
+    // ===== Initialize =====
+    window.addEventListener('load', () => {
+      setupRecognition();
+      
+      // Auto-fill with current host if empty
+      if (!$('#baseStream').value.trim()) {
+        $('#baseStream').value = 'http://' + location.hostname + ':81';
+      }
+      if (!$('#baseCapture').value.trim()) {
+        $('#baseCapture').value = 'http://' + location.hostname;
+      }
+      
+      // Nếu chọn nghe liên tục, xin quyền mic và khởi động luôn
+      const autoListen = localStorage.getItem('esp32_chkAutoListen') === '1' || $('#chkAutoListen').checked;
+      if (autoListen) {
+        setTimeout(() => startListening(), 200);
+      }
+
+      // Phản ứng khi người dùng bật/tắt auto listen
+      $('#chkAutoListen').addEventListener('change', (e) => {
+        if (e.target.checked) startListening(); else stopListening();
+      });
+
+      // Welcome message
+      setTimeout(() => {
+        showNotification('Chào mừng! Bấm nút lớn để bắt đầu');
+      }, 500);
+    });
+
+    // ===== Keyboard shortcuts =====
+    document.addEventListener('keydown', (e) => {
+      // Space bar to toggle voice
+      if (e.code === 'Space' && document.activeElement !== voiceBtn) {
+        e.preventDefault();
+        voiceBtn.click();
+      }
+      // S key for settings
+      if (e.key === 's' && !settingsPanel.classList.contains('open')) {
+        settingsBtn.click();
+      }
+    });
+  </script>
+</body>
+</html>

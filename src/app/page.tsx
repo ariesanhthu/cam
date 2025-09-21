@@ -1,103 +1,160 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useState, useEffect, useRef } from 'react';
+import { Settings } from '../types';
+import { useSettings } from '../hooks/useSettings';
+import { useNotification } from '../hooks/useNotification';
+import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
+import { useVoiceControl } from '../hooks/useVoiceControl';
+import { VoiceControlButton } from '../components/VoiceControlButton';
+import { StatusDisplay } from '../components/StatusDisplay';
+import { SettingsPanel } from '../components/SettingsPanel';
+import { NotificationToast } from '../components/NotificationToast';
+
+export default function VoiceControlApp() {
+  const [isListening, setIsListening] = useState(false);
+  const [status, setStatus] = useState('Sẵn sàng');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const recognitionRef = useRef<any>(null);
+  const shouldAutoListenRef = useRef(false);
+  const isProcessingRef = useRef(false);
+  const waitingForTriggerRef = useRef(true);
+  const lastTTSEndTimeRef = useRef(0);
+  
+  const { settings, setSettings, saveSettings, resetSettings } = useSettings();
+  const { notification, showNotification } = useNotification({ settings, recognitionRef });
+
+  // Initialize voice control hook
+  const {
+    isProcessing,
+    waitingForTrigger,
+    waitingForRequest,
+    currentRequest,
+    setCurrentRequest,
+    handleUserRequest,
+    handleTriggerWord
+  } = useVoiceControl({
+    settings,
+    showNotification,
+    setStatus,
+    setIsListening,
+    recognitionRef,
+    shouldAutoListenRef,
+    lastTTSEndTimeRef
+  });
+
+  // Initialize speech recognition hook
+  const { startListening, stopListening } = useSpeechRecognition({
+    isProcessing,
+    waitingForTrigger,
+    waitingForRequest,
+    onTriggerWord: handleTriggerWord,
+    onUserRequest: (text: string) => {
+      setCurrentRequest(text);
+      handleUserRequest(text);
+    },
+    onStatusChange: setStatus,
+    setIsListening
+  });
+
+  // Speech recognition được handle bởi useSpeechRecognition hook
+  // Không cần setup ở đây nữa
+
+  // Sync refs với state
+  useEffect(() => {
+    isProcessingRef.current = isProcessing;
+    
+    // Tạm dừng speech recognition khi đang xử lý
+    if (isProcessing && recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch (_) {}
+    }
+  }, [isProcessing]);
+
+  useEffect(() => {
+    waitingForTriggerRef.current = waitingForTrigger;
+  }, [waitingForTrigger]);
+
+  // Initialize - chỉ chạy 1 lần
+  useEffect(() => {
+    // Auto-start listening
+      setTimeout(() => startListening(), 200);
+
+    // Welcome message
+    setTimeout(() => {
+      showNotification('Chào mừng! Hãy nói "bạn ơi!" để bắt đầu');
+    }, 500);
+  }, []); // Chỉ chạy 1 lần khi mount
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (isListening) {
+          stopListening();
+        } else {
+          startListening();
+        }
+      }
+      if (e.key === 's' && !settingsOpen) {
+        setSettingsOpen(true);
+      }
+      if (e.key === 'Escape' && settingsOpen) {
+        setSettingsOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isListening, settingsOpen]);
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
+    <div className="min-h-screen bg-white dark:bg-black text-black dark:text-white font-sans">
+      {/* Main Voice Control Screen */}
+      <div className="flex flex-col items-center justify-center min-h-screen p-5 text-center">
+        <VoiceControlButton 
+          isListening={isListening}
+          onClick={() => isListening ? stopListening() : startListening()}
         />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+        
+        <StatusDisplay 
+          status={status}
+          isProcessing={isProcessing}
+          currentRequest={currentRequest}
+          waitingForTrigger={waitingForTrigger}
+        />
+      </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      {/* Settings Button */}
+      <button
+        onClick={() => setSettingsOpen(true)}
+        className={`fixed top-5 right-5 w-15 h-15 rounded-full border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-black text-black dark:text-white text-2xl cursor-pointer shadow-lg transition-opacity duration-300 ${
+          settingsOpen ? 'opacity-0 pointer-events-none' : 'opacity-100 z-50'
+        }`}
+        aria-label="Mở cài đặt"
+      >
+        ⚙️
+      </button>
+
+      {/* Settings Panel */}
+      <SettingsPanel
+        settingsOpen={settingsOpen}
+        settings={settings}
+        onClose={() => setSettingsOpen(false)}
+        onSettingsChange={setSettings}
+        onSave={() => {
+          saveSettings();
+          showNotification('Đã lưu cài đặt!');
+        }}
+        onReset={() => {
+          resetSettings();
+          showNotification('Đã reset về mặc định!');
+        }}
+      />
+
+      {/* Notification */}
+      <NotificationToast notification={notification} />
     </div>
   );
 }
