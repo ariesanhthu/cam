@@ -8,7 +8,7 @@ interface UseNotificationProps {
     voiceRate: number;
     voiceVolume: number;
   };
-  recognitionRef?: any;
+  recognitionRef?: React.RefObject<SpeechRecognition>;
 }
 
 export const useNotification = ({ settings, recognitionRef }: UseNotificationProps) => {
@@ -26,7 +26,7 @@ export const useNotification = ({ settings, recognitionRef }: UseNotificationPro
     if (settings.speak && 'speechSynthesis' in window) {
       speakText(message, { voiceRate: settings.voiceRate, voiceVolume: settings.voiceVolume }, recognitionRef);
     }
-  }, []); // Không dependencies để tránh re-render
+  }, [settings.speak, settings.voiceRate, settings.voiceVolume, recognitionRef]); // Include dependencies
 
   return {
     notification,

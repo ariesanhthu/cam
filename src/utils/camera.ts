@@ -1,12 +1,17 @@
 import { fetchImageFromSupabase } from '../lib/supabase';
 
+// Type definition for ImageCapture API
+interface ImageCaptureWindow extends Window {
+  ImageCapture?: typeof ImageCapture;
+}
+
 // Fetch image from Supabase storage
 export const fetchImageFromSupabaseStorage = async (): Promise<Blob | null> => {
   try {
     const blob = await fetchImageFromSupabase('cam01', 'image.jpg');
     return blob;
-  } catch (error: any) {
-    throw new Error('Lỗi tải ảnh từ Supabase: ' + error.message);
+  } catch (error: unknown) {
+    throw new Error('Lỗi tải ảnh từ Supabase: ' + (error instanceof Error ? error.message : 'Unknown error'));
   }
 };
 
@@ -18,7 +23,7 @@ export const captureFromDeviceCamera = async (): Promise<Blob> => {
   
   try {
     const track = stream.getVideoTracks()[0];
-    const imageCapture = ('ImageCapture' in window) ? new (window as any).ImageCapture(track) : null;
+    const imageCapture = ('ImageCapture' in window) ? new (window as ImageCaptureWindow).ImageCapture(track) : null;
     let blob: Blob;
     
     if (imageCapture && imageCapture.takePhoto) {

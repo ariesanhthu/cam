@@ -40,7 +40,7 @@ export const sendToBackend = async (blob: Blob | null, promptText: string, setti
   console.log('Prompt text:', promptText);
   console.log('Settings:', settings);
   console.log('FormData contents:');
-  for (let [key, value] of formData.entries()) {
+  for (const [key, value] of formData.entries()) {
     if (value instanceof File) {
       console.log(key, `File: ${value.name}, size: ${value.size}, type: ${value.type}`);
     } else {
@@ -93,9 +93,9 @@ export const sendToBackend = async (blob: Blob | null, promptText: string, setti
 
     console.log('Final result:', result);
     return String(result || '').trim();
-  } catch (fetchError: any) {
+  } catch (fetchError: unknown) {
     console.error('Fetch error:', fetchError);
-    if (fetchError.name === 'TypeError' && fetchError.message.includes('fetch')) {
+    if (fetchError instanceof Error && fetchError.name === 'TypeError' && fetchError.message.includes('fetch')) {
       throw new Error('Không thể kết nối đến server. Kiểm tra địa chỉ server và kết nối mạng.');
     }
     throw fetchError;

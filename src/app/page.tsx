@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Settings } from '../types';
 import { useSettings } from '../hooks/useSettings';
 import { useNotification } from '../hooks/useNotification';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
@@ -16,7 +15,7 @@ export default function VoiceControlApp() {
   const [status, setStatus] = useState('Sẵn sàng');
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const shouldAutoListenRef = useRef(false);
   const isProcessingRef = useRef(false);
   const waitingForTriggerRef = useRef(true);
@@ -67,7 +66,7 @@ export default function VoiceControlApp() {
     
     // Tạm dừng speech recognition khi đang xử lý
     if (isProcessing && recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (_) {}
+      try { recognitionRef.current.stop(); } catch {}
     }
   }, [isProcessing]);
 
@@ -84,7 +83,7 @@ export default function VoiceControlApp() {
     setTimeout(() => {
       showNotification('Chào mừng! Hãy nói "bạn ơi!" để bắt đầu');
     }, 500);
-  }, []); // Chỉ chạy 1 lần khi mount
+  }, [showNotification, startListening]); // Include dependencies
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -107,7 +106,7 @@ export default function VoiceControlApp() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isListening, settingsOpen]);
+  }, [isListening, settingsOpen, startListening, stopListening]); // Include dependencies
 
   return (
     <div className="min-h-screen bg-white dark:bg-black text-black dark:text-white font-sans">

@@ -1,6 +1,7 @@
 import { useRef, useCallback } from 'react';
 import { normalizeVN, containsTriggerWord } from '../utils/speech';
 
+
 interface UseSpeechRecognitionProps {
   isProcessing: boolean;
   waitingForTrigger: boolean;
@@ -20,7 +21,7 @@ export const useSpeechRecognition = ({
   onStatusChange,
   setIsListening
 }: UseSpeechRecognitionProps) => {
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const shouldAutoListenRef = useRef(false);
   const lastCaptureTimeRef = useRef(0);
   const waitingForTriggerRef = useRef(waitingForTrigger);
@@ -32,7 +33,7 @@ export const useSpeechRecognition = ({
   waitingForRequestRef.current = waitingForRequest;
 
   const setupRecognition = useCallback(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = (window as SpeechRecognitionWindow).SpeechRecognition || (window as SpeechRecognitionWindow).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       onStatusChange('Trình duyệt không hỗ trợ nhận diện giọng nói');
       return false;
@@ -53,13 +54,13 @@ export const useSpeechRecognition = ({
       console.log('Speech recognition ended');
       setIsListening?.(false);
       onStatusChange('Đã dừng nghe');
-      if (shouldAutoListenRef.current) {
-        console.log('Auto-restarting recognition...');
-        try { recognitionRef.current.start(); } catch (_) {}
-      }
+    if (shouldAutoListenRef.current && recognitionRef.current) {
+      console.log('Auto-restarting recognition...');
+      try { recognitionRef.current.start(); } catch {}
+    }
     };
 
-    recognitionRef.current.onerror = (event: any) => {
+    recognitionRef.current.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.log('Speech recognition error:', event.error);
       if (event.error === 'no-speech') {
         onStatusChange('Không nghe thấy giọng nói');
@@ -70,7 +71,7 @@ export const useSpeechRecognition = ({
       }
     };
 
-    recognitionRef.current.onresult = (event: any) => {
+    recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
       console.log('=== ONRESULT DEBUG ===');
       console.log('Event:', event);
       console.log('Result index:', event.resultIndex);
@@ -157,7 +158,7 @@ export const useSpeechRecognition = ({
     };
 
     return true;
-  }, []); // Không dependencies để tránh re-render
+  }, [onStatusChange, setIsListening, onTriggerWord, onUserRequest]); // Include dependencies
 
   const startListening = useCallback(async () => {
     console.log('=== START LISTENING DEBUG ===');
@@ -176,19 +177,21 @@ export const useSpeechRecognition = ({
       await navigator.mediaDevices.getUserMedia({ audio: true });
       shouldAutoListenRef.current = true;
       console.log('Starting recognition...');
-      recognitionRef.current.start();
+      if (recognitionRef.current) {
+        recognitionRef.current.start();
+      }
       console.log('Recognition started successfully');
     } catch (err) {
       console.error('Error starting listening:', err);
       throw new Error('Vui lòng cho phép sử dụng microphone');
     }
     console.log('=== END START LISTENING DEBUG ===');
-  }, [setupRecognition, isProcessing, waitingForTrigger]);
+  }, [setupRecognition, isProcessing, waitingForTrigger, onStatusChange, setIsListening]); // Include dependencies
 
   const stopListening = useCallback(() => {
     shouldAutoListenRef.current = false;
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (_) {}
+      try { recognitionRef.current.stop(); } catch {}
     }
   }, []);
 

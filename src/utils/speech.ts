@@ -1,3 +1,4 @@
+
 // Normalize Vietnamese text
 export const normalizeVN = (str: string): string => {
   return (str || '').toLowerCase()
@@ -18,8 +19,8 @@ export const containsTriggerWord = (text: string): boolean => {
 export const speakText = async (
   text: string, 
   settings: { voiceRate: number; voiceVolume: number },
-  recognitionRef?: any,
-  shouldAutoListenRef?: any,
+  recognitionRef?: React.RefObject<SpeechRecognition>,
+  shouldAutoListenRef?: React.MutableRefObject<boolean>,
   onEnd?: () => void
 ): Promise<void> => {
   if (!('speechSynthesis' in window)) return;
@@ -33,7 +34,7 @@ export const speakText = async (
     try { 
       recognitionRef.current.stop(); 
       console.log('Speech recognition stopped');
-    } catch (_) {}
+    } catch {}
   }
   
   // Tắt auto listen trong lúc đọc
@@ -63,7 +64,7 @@ export const speakText = async (
       setTimeout(() => {
         console.log('Restarting speech recognition after TTS...');
         shouldAutoListenRef.current = true;
-        try { recognitionRef.current.start(); } catch (_) {}
+        try { recognitionRef.current.start(); } catch {}
       }, 2000); // Tăng delay lên 2 giây
     }
   };
@@ -78,9 +79,9 @@ export const speakResult = async (
   settings: { voiceRate: number; voiceVolume: number },
   onStart?: () => void,
   onEnd?: () => void,
-  recognitionRef?: any,
-  shouldAutoListenRef?: any,
-  lastTTSEndTimeRef?: any
+  recognitionRef?: React.RefObject<SpeechRecognition>,
+  shouldAutoListenRef?: React.MutableRefObject<boolean>,
+  lastTTSEndTimeRef?: React.MutableRefObject<number>
 ): Promise<void> => {
   if (!('speechSynthesis' in window)) {
     throw new Error('Trình duyệt không hỗ trợ đọc văn bản');
@@ -95,7 +96,7 @@ export const speakResult = async (
     try { 
       recognitionRef.current.stop(); 
       console.log('Speech recognition stopped');
-    } catch (_) {}
+    } catch {}
   }
 
   // Tắt auto listen trong lúc đọc
@@ -130,7 +131,7 @@ export const speakResult = async (
       setTimeout(() => {
         console.log('Restarting speech recognition after TTS...');
         shouldAutoListenRef.current = true;
-        try { recognitionRef.current.start(); } catch (_) {}
+        try { recognitionRef.current.start(); } catch {}
       }, 2000); // Tăng delay lên 2 giây
     }
   };

@@ -23,7 +23,7 @@ export const StatusDisplay = ({ status, isProcessing, currentRequest, waitingFor
       {waitingForTrigger && !isProcessing && (
         <div className="mt-4 px-6 py-3 bg-blue-500/20 border border-blue-500 rounded-lg">
           <span className="text-blue-600 dark:text-blue-400 text-sm">
-            🎯 Chờ nghe "bạn ơi!" để kích hoạt
+            🎯 Chờ nghe &quot;bạn ơi!&quot; để kích hoạt
           </span>
         </div>
       )}

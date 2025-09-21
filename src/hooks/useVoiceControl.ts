@@ -4,21 +4,21 @@ import { captureFromDeviceCamera, fetchImageFromSupabaseStorage } from '../utils
 import { sendToBackend } from '../utils/backend';
 import { speakResult, speakText } from '../utils/speech';
 
+
 interface UseVoiceControlProps {
   settings: Settings;
   showNotification: (message: string, type?: 'success' | 'error') => void;
   setStatus: (status: string) => void;
   setIsListening: (listening: boolean) => void;
-  recognitionRef: any;
-  shouldAutoListenRef: any;
-  lastTTSEndTimeRef: any;
+  recognitionRef: React.RefObject<SpeechRecognition>;
+  shouldAutoListenRef: React.MutableRefObject<boolean>;
+  lastTTSEndTimeRef: React.MutableRefObject<number>;
 }
 
 export const useVoiceControl = ({
   settings,
   showNotification,
   setStatus,
-  setIsListening,
   recognitionRef,
   shouldAutoListenRef,
   lastTTSEndTimeRef
@@ -39,7 +39,7 @@ export const useVoiceControl = ({
 
     // Tạm dừng listening
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (_) {}
+      try { recognitionRef.current.stop(); } catch {}
     }
 
     try {
@@ -89,7 +89,7 @@ export const useVoiceControl = ({
           // Tiếp tục listening nếu không đọc với delay
           setTimeout(() => {
             if (shouldAutoListenRef.current) {
-              try { recognitionRef.current.start(); } catch (_) {}
+              try { recognitionRef.current.start(); } catch {}
             }
           }, 1000);
         }
@@ -97,10 +97,10 @@ export const useVoiceControl = ({
         setStatus('Không nhận được kết quả từ server');
         showNotification('Không nhận được kết quả từ server', 'error');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error in handleUserRequest:', err);
-      showNotification('Lỗi xử lý: ' + err.message, 'error');
-      setStatus('Lỗi xử lý: ' + err.message);
+      showNotification('Lỗi xử lý: ' + (err instanceof Error ? err.message : 'Unknown error'), 'error');
+      setStatus('Lỗi xử lý: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setIsProcessing(false);
       // Reset về trạng thái chờ trigger word
@@ -112,11 +112,11 @@ export const useVoiceControl = ({
       // Tiếp tục listening sau khi xử lý xong với delay
       setTimeout(() => {
         if (shouldAutoListenRef.current) {
-          try { recognitionRef.current.start(); } catch (_) {}
+          try { recognitionRef.current.start(); } catch {}
         }
       }, 1500);
     }
-  }, [settings, showNotification, setStatus, recognitionRef, shouldAutoListenRef]); // Thêm dependencies
+  }, [settings, showNotification, setStatus, recognitionRef, shouldAutoListenRef, lastTTSEndTimeRef]); // Include all dependencies
 
   const handleTriggerWord = useCallback(() => {
     console.log('=== HANDLE TRIGGER WORD DEBUG ===');
@@ -146,7 +146,7 @@ export const useVoiceControl = ({
     }
     
     console.log('=== END HANDLE TRIGGER WORD DEBUG ===');
-  }, [setStatus, showNotification, settings, recognitionRef, shouldAutoListenRef]); // Thêm dependencies
+  }, [setStatus, showNotification, settings, recognitionRef, shouldAutoListenRef, waitingForTrigger]); // Include all dependencies
 
   return {
     isProcessing,
