@@ -158,7 +158,7 @@ export const useSpeechRecognition = ({
     };
 
     return true;
-  }, [onStatusChange, setIsListening, onTriggerWord, onUserRequest]); // Include dependencies
+  }, [onStatusChange, setIsListening, onTriggerWord, onUserRequest, isProcessing, waitingForTrigger]); // Include all dependencies
 
   const startListening = useCallback(async () => {
     console.log('=== START LISTENING DEBUG ===');
@@ -186,7 +186,7 @@ export const useSpeechRecognition = ({
       throw new Error('Vui lòng cho phép sử dụng microphone');
     }
     console.log('=== END START LISTENING DEBUG ===');
-  }, [setupRecognition, isProcessing, waitingForTrigger, onStatusChange, setIsListening]); // Include dependencies
+  }, [setupRecognition, isProcessing, waitingForTrigger]); // Include only necessary dependencies
 
   const stopListening = useCallback(() => {
     shouldAutoListenRef.current = false;

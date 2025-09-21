@@ -23,7 +23,7 @@ export const captureFromDeviceCamera = async (): Promise<Blob> => {
   
   try {
     const track = stream.getVideoTracks()[0];
-    const imageCapture = ('ImageCapture' in window) ? new (window as ImageCaptureWindow).ImageCapture(track) : null;
+    const imageCapture = ('ImageCapture' in window) && (window as ImageCaptureWindow).ImageCapture ? new (window as ImageCaptureWindow).ImageCapture!(track) : null;
     let blob: Blob;
     
     if (imageCapture && imageCapture.takePhoto) {

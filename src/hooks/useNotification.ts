@@ -8,7 +8,7 @@ interface UseNotificationProps {
     voiceRate: number;
     voiceVolume: number;
   };
-  recognitionRef?: React.RefObject<SpeechRecognition>;
+  recognitionRef?: React.RefObject<SpeechRecognition | null>;
 }
 
 export const useNotification = ({ settings, recognitionRef }: UseNotificationProps) => {

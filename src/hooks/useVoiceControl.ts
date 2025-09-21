@@ -10,7 +10,7 @@ interface UseVoiceControlProps {
   showNotification: (message: string, type?: 'success' | 'error') => void;
   setStatus: (status: string) => void;
   setIsListening: (listening: boolean) => void;
-  recognitionRef: React.RefObject<SpeechRecognition>;
+  recognitionRef: React.RefObject<SpeechRecognition | null>;
   shouldAutoListenRef: React.MutableRefObject<boolean>;
   lastTTSEndTimeRef: React.MutableRefObject<number>;
 }
@@ -88,7 +88,7 @@ export const useVoiceControl = ({
           setStatus('Hoàn tất! Hãy nói "bạn ơi!" để tiếp tục...');
           // Tiếp tục listening nếu không đọc với delay
           setTimeout(() => {
-            if (shouldAutoListenRef.current) {
+            if (shouldAutoListenRef.current && recognitionRef.current) {
               try { recognitionRef.current.start(); } catch {}
             }
           }, 1000);
@@ -111,7 +111,7 @@ export const useVoiceControl = ({
       
       // Tiếp tục listening sau khi xử lý xong với delay
       setTimeout(() => {
-        if (shouldAutoListenRef.current) {
+        if (shouldAutoListenRef.current && recognitionRef.current) {
           try { recognitionRef.current.start(); } catch {}
         }
       }, 1500);
