@@ -1,5 +1,5 @@
 import { useRef, useCallback } from 'react';
-import { normalizeVN, containsTriggerWord } from '../utils/speech';
+import { normalizeVN, containsTriggerWord, isSpeaking } from '../utils/speech';
 
 
 interface UseSpeechRecognitionProps {
@@ -54,10 +54,16 @@ export const useSpeechRecognition = ({
       console.log('Speech recognition ended');
       setIsListening?.(false);
       onStatusChange('Đã dừng nghe');
-    if (shouldAutoListenRef.current && recognitionRef.current) {
-      console.log('Auto-restarting recognition...');
-      try { recognitionRef.current.start(); } catch {}
-    }
+      
+      // Chỉ restart nếu không đang xử lý, TTS không chạy và đã được enable
+      if (shouldAutoListenRef.current && recognitionRef.current && !isProcessing && !isSpeaking()) {
+        console.log('Auto-restarting recognition...');
+        setTimeout(() => {
+          if (shouldAutoListenRef.current && recognitionRef.current && !isProcessing && !isSpeaking()) {
+            try { recognitionRef.current.start(); } catch {}
+          }
+        }, 1000); // Delay để tránh restart quá nhanh
+      }
     };
 
     recognitionRef.current.onerror = (event: SpeechRecognitionErrorEvent) => {
@@ -101,9 +107,9 @@ export const useSpeechRecognition = ({
         const normalizedText = normalizeVN(text.trim());
         console.log('Normalized text:', normalizedText);
         
-        // Nếu đang xử lý thì không làm gì cả
-        if (isProcessing) {
-          console.log('Currently processing, ignoring result');
+        // Nếu đang xử lý hoặc TTS đang chạy thì không làm gì cả
+        if (isProcessing || isSpeaking()) {
+          console.log('Currently processing or TTS speaking, ignoring result');
           return;
         }
 
@@ -134,6 +140,13 @@ export const useSpeechRecognition = ({
             return;
           }
           
+          // Kiểm tra không phải trigger word trong request
+          if (containsTriggerWord(finalTranscript.trim())) {
+            console.log('Trigger word detected in request, ignoring');
+            onStatusChange('Vui lòng nói yêu cầu, không cần nói "bạn ơi!" nữa');
+            return;
+          }
+          
           if (now - lastCaptureTimeRef.current > 2000) {
             lastCaptureTimeRef.current = now;
             onUserRequest(finalTranscript.trim());
@@ -158,7 +171,7 @@ export const useSpeechRecognition = ({
     };
 
     return true;
-  }, [onStatusChange, setIsListening, onTriggerWord, onUserRequest, isProcessing, waitingForTrigger]); // Include all dependencies
+  }, [onStatusChange, setIsListening, onTriggerWord, onUserRequest]); // Chỉ include stable dependencies
 
   const startListening = useCallback(async () => {
     console.log('=== START LISTENING DEBUG ===');
@@ -186,7 +199,7 @@ export const useSpeechRecognition = ({
       throw new Error('Vui lòng cho phép sử dụng microphone');
     }
     console.log('=== END START LISTENING DEBUG ===');
-  }, [setupRecognition, isProcessing, waitingForTrigger]); // Include only necessary dependencies
+  }, [setupRecognition]); // Chỉ include setupRecognition
 
   const stopListening = useCallback(() => {
     shouldAutoListenRef.current = false;

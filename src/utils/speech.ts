@@ -15,6 +15,11 @@ export const containsTriggerWord = (text: string): boolean => {
   return hasTrigger;
 };
 
+// Check if TTS is currently speaking
+export const isSpeaking = (): boolean => {
+  return speechSynthesis.speaking || speechSynthesis.pending;
+};
+
 // Text to speech
 export const speakText = async (
   text: string, 
@@ -33,14 +38,14 @@ export const speakText = async (
   if (recognitionRef?.current) {
     try { 
       recognitionRef.current.stop(); 
-      console.log('Speech recognition stopped');
+      console.log('Speech recognition stopped for TTS');
     } catch {}
   }
   
   // Tắt auto listen trong lúc đọc
   if (shouldAutoListenRef) {
     shouldAutoListenRef.current = false;
-    console.log('Auto listen disabled');
+    console.log('Auto listen disabled for TTS');
   }
   
   speechSynthesis.cancel();
@@ -65,9 +70,14 @@ export const speakText = async (
         console.log('Restarting speech recognition after TTS...');
         shouldAutoListenRef.current = true;
         if (recognitionRef.current) {
-          try { recognitionRef.current.start(); } catch {}
+          try { 
+            recognitionRef.current.start(); 
+            console.log('Speech recognition restarted after TTS');
+          } catch (err) {
+            console.log('Failed to restart speech recognition:', err);
+          }
         }
-      }, 2000); // Tăng delay lên 2 giây
+      }, 3000); // Tăng delay lên 3 giây để tránh conflict
     }
   };
   
@@ -97,14 +107,14 @@ export const speakResult = async (
   if (recognitionRef?.current) {
     try { 
       recognitionRef.current.stop(); 
-      console.log('Speech recognition stopped');
+      console.log('Speech recognition stopped for TTS result');
     } catch {}
   }
 
   // Tắt auto listen trong lúc đọc
   if (shouldAutoListenRef) {
     shouldAutoListenRef.current = false;
-    console.log('Auto listen disabled');
+    console.log('Auto listen disabled for TTS result');
   }
 
   speechSynthesis.cancel();
@@ -134,9 +144,14 @@ export const speakResult = async (
         console.log('Restarting speech recognition after TTS...');
         shouldAutoListenRef.current = true;
         if (recognitionRef.current) {
-          try { recognitionRef.current.start(); } catch {}
+          try { 
+            recognitionRef.current.start(); 
+            console.log('Speech recognition restarted after TTS');
+          } catch (err) {
+            console.log('Failed to restart speech recognition:', err);
+          }
         }
-      }, 2000); // Tăng delay lên 2 giây
+      }, 3000); // Tăng delay lên 3 giây để tránh conflict
     }
   };
   

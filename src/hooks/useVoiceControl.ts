@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Settings } from '../types';
 import { captureFromDeviceCamera, fetchImageFromSupabaseStorage } from '../utils/camera';
 import { sendToBackend } from '../utils/backend';
@@ -27,10 +27,18 @@ export const useVoiceControl = ({
   const [waitingForTrigger, setWaitingForTrigger] = useState(true);
   const [waitingForRequest, setWaitingForRequest] = useState(false);
   const [currentRequest, setCurrentRequest] = useState('');
+  
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleUserRequest = useCallback(async (promptText: string) => {
     console.log('handleUserRequest called with:', promptText);
     console.log('Current settings:', settings);
+    
+    // Cancel timeout nếu có
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
     
     setIsProcessing(true);
     setWaitingForRequest(false); // Không còn đợi request nữa
@@ -89,9 +97,14 @@ export const useVoiceControl = ({
           // Tiếp tục listening nếu không đọc với delay
           setTimeout(() => {
             if (shouldAutoListenRef.current && recognitionRef.current) {
-              try { recognitionRef.current.start(); } catch {}
+              try { 
+                recognitionRef.current.start(); 
+                console.log('Speech recognition restarted after processing');
+              } catch (err) {
+                console.log('Failed to restart speech recognition:', err);
+              }
             }
-          }, 1000);
+          }, 2000); // Tăng delay để tránh conflict
         }
       } else {
         setStatus('Không nhận được kết quả từ server');
@@ -112,11 +125,16 @@ export const useVoiceControl = ({
       // Tiếp tục listening sau khi xử lý xong với delay
       setTimeout(() => {
         if (shouldAutoListenRef.current && recognitionRef.current) {
-          try { recognitionRef.current.start(); } catch {}
+          try { 
+            recognitionRef.current.start(); 
+            console.log('Speech recognition restarted after error handling');
+          } catch (err) {
+            console.log('Failed to restart speech recognition:', err);
+          }
         }
-      }, 1500);
+      }, 2500); // Tăng delay để tránh conflict
     }
-  }, [settings, showNotification, setStatus, recognitionRef, shouldAutoListenRef, lastTTSEndTimeRef]); // Include all dependencies
+  }, [settings, showNotification, setStatus]); // Chỉ include stable dependencies
 
   const handleTriggerWord = useCallback(() => {
     console.log('=== HANDLE TRIGGER WORD DEBUG ===');
@@ -137,16 +155,36 @@ export const useVoiceControl = ({
           console.log('Trigger word response finished, ready to listen for request');
           setWaitingForRequest(true); // Bắt đầu đợi request
           setStatus('Hãy nói yêu cầu của bạn...');
+          
+          // Set timeout để tự động reset nếu không có request trong 3 giây
+          timeoutRef.current = setTimeout(() => {
+            console.log('Timeout waiting for request, resetting to trigger mode');
+            setWaitingForTrigger(true);
+            setWaitingForRequest(false);
+            setStatus('Hãy nói "bạn ơi!" để bắt đầu...');
+            showNotification('Hết thời gian chờ, hãy nói "bạn ơi!" lại');
+            timeoutRef.current = null;
+          }, 3000); // 3 giây timeout
         }
       );
     } else {
       // Nếu không đọc thì ngay lập tức sẵn sàng nghe
       setWaitingForRequest(true);
       setStatus('Hãy nói yêu cầu của bạn...');
+      
+      // Set timeout để tự động reset nếu không có request trong 3 giây
+      timeoutRef.current = setTimeout(() => {
+        console.log('Timeout waiting for request, resetting to trigger mode');
+        setWaitingForTrigger(true);
+        setWaitingForRequest(false);
+        setStatus('Hãy nói "bạn ơi!" để bắt đầu...');
+        showNotification('Hết thời gian chờ, hãy nói "bạn ơi!" lại');
+        timeoutRef.current = null;
+      }, 3000); // 3 giây timeout
     }
     
     console.log('=== END HANDLE TRIGGER WORD DEBUG ===');
-  }, [setStatus, showNotification, settings, recognitionRef, shouldAutoListenRef, waitingForTrigger]); // Include all dependencies
+  }, [setStatus, showNotification, settings, waitingForTrigger, waitingForRequest]); // Include state dependencies
 
   return {
     isProcessing,

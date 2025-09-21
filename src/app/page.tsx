@@ -12,7 +12,7 @@ import { NotificationToast } from '../components/NotificationToast';
 
 export default function VoiceControlApp() {
   const [isListening, setIsListening] = useState(false);
-  const [status, setStatus] = useState('Sẵn sàng');
+  const [status, setStatus] = useState('Bấm nút để bắt đầu');
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -60,30 +60,24 @@ export default function VoiceControlApp() {
   // Speech recognition được handle bởi useSpeechRecognition hook
   // Không cần setup ở đây nữa
 
-  // Sync refs với state
+  // Sync refs với state - gộp lại để giảm re-render
   useEffect(() => {
     isProcessingRef.current = isProcessing;
+    waitingForTriggerRef.current = waitingForTrigger;
     
     // Tạm dừng speech recognition khi đang xử lý
     if (isProcessing && recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
     }
-  }, [isProcessing]);
-
-  useEffect(() => {
-    waitingForTriggerRef.current = waitingForTrigger;
-  }, [waitingForTrigger]);
+  }, [isProcessing, waitingForTrigger]);
 
   // Initialize - chỉ chạy 1 lần
   useEffect(() => {
-    // Auto-start listening
-      setTimeout(() => startListening(), 200);
-
-    // Welcome message
+    // Welcome message - không tự động start listening
     setTimeout(() => {
-      showNotification('Chào mừng! Hãy nói "bạn ơi!" để bắt đầu');
+      showNotification('Chào mừng! Bấm nút để bắt đầu nghe giọng nói');
     }, 500);
-  }, [showNotification, startListening]); // Include dependencies
+  }, []); // Empty dependency array - chỉ chạy 1 lần
 
   // Keyboard shortcuts
   useEffect(() => {
