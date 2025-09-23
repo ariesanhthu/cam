@@ -53,21 +53,14 @@ export const useVoiceControl = ({
     try {
       let blob: Blob | null = null;
       
-      // Only capture if camera is enabled
-      if (settings.enableCamera) {
-        if (settings.useDeviceCamera) {
-          // Use device camera
-          blob = await captureFromDeviceCamera();
-          showNotification('Đã chụp ảnh từ thiết bị');
-          setStatus('Chụp ảnh từ thiết bị thành công');
-        } else {
-          // Fetch from Supabase
-          blob = await fetchImageFromSupabaseStorage();
-          showNotification('Đã tải ảnh từ Supabase');
-          setStatus('Tải ảnh từ Supabase thành công');
-        }
+      // Luôn đính kèm ảnh: ON chụp từ thiết bị, OFF lấy từ Supabase
+      if (settings.useDeviceCamera) {
+        blob = await captureFromDeviceCamera();
+        showNotification('Đã chụp ảnh từ thiết bị');
+        setStatus('Chụp ảnh từ thiết bị thành công');
       } else {
-        setStatus('Gửi yêu cầu không có ảnh');
+        // Lấy ảnh từ Supabase nhưng không thông báo/không nói
+        blob = await fetchImageFromSupabaseStorage();
       }
 
       // Send to backend
@@ -94,17 +87,18 @@ export const useVoiceControl = ({
           );
         } else {
           setStatus('Hoàn tất! Hãy nói "bạn ơi!" để tiếp tục...');
-          // Tiếp tục listening nếu không đọc với delay
+          // Bật lại auto listen và tiếp tục nghe nếu không đọc
           setTimeout(() => {
-            if (shouldAutoListenRef.current && recognitionRef.current) {
+            shouldAutoListenRef.current = true;
+            if (recognitionRef.current) {
               try { 
                 recognitionRef.current.start(); 
-                console.log('Speech recognition restarted after processing');
+                console.log('Speech recognition restarted after processing (no TTS)');
               } catch (err) {
                 console.log('Failed to restart speech recognition:', err);
               }
             }
-          }, 2000); // Tăng delay để tránh conflict
+          }, 1200);
         }
       } else {
         setStatus('Không nhận được kết quả từ server');
@@ -124,7 +118,8 @@ export const useVoiceControl = ({
       
       // Tiếp tục listening sau khi xử lý xong với delay
       setTimeout(() => {
-        if (shouldAutoListenRef.current && recognitionRef.current) {
+        shouldAutoListenRef.current = true;
+        if (recognitionRef.current) {
           try { 
             recognitionRef.current.start(); 
             console.log('Speech recognition restarted after error handling');
@@ -132,7 +127,7 @@ export const useVoiceControl = ({
             console.log('Failed to restart speech recognition:', err);
           }
         }
-      }, 2500); // Tăng delay để tránh conflict
+      }, 2000);
     }
   }, [settings, showNotification, setStatus]); // Chỉ include stable dependencies
 
@@ -156,7 +151,7 @@ export const useVoiceControl = ({
           setWaitingForRequest(true); // Bắt đầu đợi request
           setStatus('Hãy nói yêu cầu của bạn...');
           
-          // Set timeout để tự động reset nếu không có request trong 3 giây
+          // Set timeout để tự động reset nếu không có request trong 5 giây
           timeoutRef.current = setTimeout(() => {
             console.log('Timeout waiting for request, resetting to trigger mode');
             setWaitingForTrigger(true);
@@ -164,7 +159,7 @@ export const useVoiceControl = ({
             setStatus('Hãy nói "bạn ơi!" để bắt đầu...');
             showNotification('Hết thời gian chờ, hãy nói "bạn ơi!" lại');
             timeoutRef.current = null;
-          }, 3000); // 3 giây timeout
+          }, 5000);
         }
       );
     } else {
@@ -172,7 +167,7 @@ export const useVoiceControl = ({
       setWaitingForRequest(true);
       setStatus('Hãy nói yêu cầu của bạn...');
       
-      // Set timeout để tự động reset nếu không có request trong 3 giây
+      // Set timeout để tự động reset nếu không có request trong 8 giây
       timeoutRef.current = setTimeout(() => {
         console.log('Timeout waiting for request, resetting to trigger mode');
         setWaitingForTrigger(true);
@@ -180,7 +175,7 @@ export const useVoiceControl = ({
         setStatus('Hãy nói "bạn ơi!" để bắt đầu...');
         showNotification('Hết thời gian chờ, hãy nói "bạn ơi!" lại');
         timeoutRef.current = null;
-      }, 3000); // 3 giây timeout
+      }, 8000);
     }
     
     console.log('=== END HANDLE TRIGGER WORD DEBUG ===');

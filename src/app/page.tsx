@@ -21,7 +21,7 @@ export default function VoiceControlApp() {
   const waitingForTriggerRef = useRef(true);
   const lastTTSEndTimeRef = useRef(0);
   
-  const { settings, setSettings, saveSettings, resetSettings } = useSettings();
+  const { settings, setSettings, saveSettings, resetSettings, reloadFromDb, loaded } = useSettings();
   const { notification, showNotification } = useNotification({ settings, recognitionRef });
 
   // Initialize voice control hook
@@ -104,6 +104,11 @@ export default function VoiceControlApp() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-black text-black dark:text-white font-sans">
+      {!loaded && (
+        <div className="fixed inset-0 flex items-center justify-center bg-white/70 dark:bg-black/70 z-50">
+          <div className="px-4 py-2 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">Đang tải cấu hình...</div>
+        </div>
+      )}
       {/* Main Voice Control Screen */}
       <div className="flex flex-col items-center justify-center min-h-screen p-5 text-center">
         <VoiceControlButton 
@@ -136,9 +141,14 @@ export default function VoiceControlApp() {
         settings={settings}
         onClose={() => setSettingsOpen(false)}
         onSettingsChange={setSettings}
-        onSave={() => {
-          saveSettings();
-          showNotification('Đã lưu cài đặt!');
+        onSave={async () => {
+          try {
+            await saveSettings();
+            showNotification('Đã lưu cài đặt!');
+            await reloadFromDb();
+          } catch {
+            showNotification('Lưu cài đặt thất bại', 'error');
+          }
         }}
         onReset={() => {
           resetSettings();

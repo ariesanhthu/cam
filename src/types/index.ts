@@ -1,9 +1,6 @@
 export interface Settings {
   backendUrl: string;
-  enableCamera: boolean;
   useDeviceCamera: boolean;
-  autoSend: boolean;
-  autoListen: boolean;
   speak: boolean;
   voiceRate: number;
   voiceVolume: number;

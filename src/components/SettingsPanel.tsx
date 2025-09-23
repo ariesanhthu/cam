@@ -29,7 +29,25 @@ export const SettingsPanel = ({
         ✕
       </button>
       
-      <div className="space-y-8">
+      {/* Action bar trên cùng */}
+      <div className="sticky top-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 supports-[backdrop-filter]:dark:bg-gray-900/60 z-10 -mt-4 -mx-5 px-5 pt-4 pb-3 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex gap-3">
+          <button
+            onClick={onSave}
+            className="flex-1 py-3 bg-green-500 hover:bg-green-600 text-white font-medium rounded-lg transition-colors duration-200"
+          >
+            💾 Lưu
+          </button>
+          <button
+            onClick={onReset}
+            className="flex-1 py-3 bg-gray-500 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors duration-200"
+          >
+            🔄 Reset
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-8 mt-6">
         {/* Backend Settings */}
         <div className="p-5 border border-gray-300 dark:border-gray-600 rounded-lg">
           <h2 className="text-lg font-bold mb-4 text-sky-500">Backend Server</h2>
@@ -43,49 +61,8 @@ export const SettingsPanel = ({
             placeholder="http://192.168.1.2:5000/analyze"
             className="w-full p-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-base bg-white dark:bg-gray-800 text-black dark:text-white mb-4"
           />
-          
-          <div className="flex gap-3">
-            <button
-              onClick={onSave}
-              className="flex-1 py-3 bg-green-500 hover:bg-green-600 text-white font-medium rounded-lg transition-colors duration-200"
-            >
-              💾 Lưu
-            </button>
-            
-            <button
-              onClick={onReset}
-              className="flex-1 py-3 bg-gray-500 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors duration-200"
-            >
-              🔄 Reset
-            </button>
-          </div>
-          
-          <div className="flex items-center gap-3 mb-3">
-            <input
-              type="checkbox"
-              id="chkAutoSend"
-              checked={settings.autoSend}
-              onChange={(e) => onSettingsChange({ ...settings, autoSend: e.target.checked })}
-              className="w-6 h-6 cursor-pointer"
-            />
-            <label htmlFor="chkAutoSend" className="font-medium text-sm">
-              Tự động gửi yêu cầu sau khi xử lý
-            </label>
-          </div>
-          
-          <div className="flex items-center gap-3 mb-3">
-            <input
-              type="checkbox"
-              id="chkAutoListen"
-              checked={settings.autoListen}
-              onChange={(e) => onSettingsChange({ ...settings, autoListen: e.target.checked })}
-              className="w-6 h-6 cursor-pointer"
-            />
-            <label htmlFor="chkAutoListen" className="font-medium text-sm">
-              Tự động nghe liên tục
-            </label>
-          </div>
-          
+        
+          {/* Các tuỳ chọn liên quan giọng nói */}
           <div className="flex items-center gap-3 mb-3">
             <input
               type="checkbox"
@@ -100,44 +77,25 @@ export const SettingsPanel = ({
           </div>
         </div>
 
-        {/* Camera Settings */}
+        {/* Camera Settings (1 toggle duy nhất) */}
         <div className="p-5 border border-gray-300 dark:border-gray-600 rounded-lg">
           <h2 className="text-lg font-bold mb-4 text-sky-500">Camera</h2>
           <div className="flex items-center gap-3 mb-3">
             <input
               type="checkbox"
-              id="chkEnableCamera"
-              checked={settings.enableCamera}
-              onChange={(e) => onSettingsChange({ ...settings, enableCamera: e.target.checked })}
+              id="chkUseDeviceCamera"
+              checked={settings.useDeviceCamera}
+              onChange={(e) => onSettingsChange({ ...settings, useDeviceCamera: e.target.checked })}
               className="w-6 h-6 cursor-pointer"
             />
-            <label htmlFor="chkEnableCamera" className="font-medium text-sm">
-              Bật chụp ảnh
+            <label htmlFor="chkUseDeviceCamera" className="font-medium text-sm">
+              ON: chụp từ thiết bị • OFF: lấy ảnh từ Supabase
             </label>
           </div>
-          
-          {settings.enableCamera && (
-            <div className="flex items-center gap-3 mb-3">
-              <input
-                type="checkbox"
-                id="chkUseDeviceCamera"
-                checked={settings.useDeviceCamera}
-                onChange={(e) => onSettingsChange({ ...settings, useDeviceCamera: e.target.checked })}
-                className="w-6 h-6 cursor-pointer"
-              />
-              <label htmlFor="chkUseDeviceCamera" className="font-medium text-sm">
-                Sử dụng camera thiết bị
-              </label>
-            </div>
-          )}
-          
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            {!settings.enableCamera 
-              ? 'OFF: Chỉ gửi yêu cầu văn bản, không chụp ảnh'
-              : settings.useDeviceCamera 
-                ? 'ON: Sẽ chụp ảnh từ camera thiết bị và gửi kèm yêu cầu'
-                : 'OFF: Sẽ lấy ảnh từ Supabase (cam01/image.jpg) và gửi kèm yêu cầu'
-            }
+            {settings.useDeviceCamera
+              ? 'Đang bật: sẽ chụp ảnh từ camera thiết bị khi gửi yêu cầu'
+              : 'Đang tắt: sẽ lấy ảnh từ Supabase (cam01/image.jpg) khi gửi yêu cầu'}
           </p>
         </div>
 
