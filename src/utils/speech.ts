@@ -56,29 +56,13 @@ export const speakText = async (
   
   utterance.onstart = () => {
     console.log('Speech synthesis started');
-    };
+  };
     
   utterance.onend = () => {
     console.log('Speech synthesis ended');
     
     // Call onEnd callback nếu có
     onEnd?.();
-    
-    // Tiếp tục speech recognition sau khi đọc xong với delay dài hơn
-    if (recognitionRef?.current && shouldAutoListenRef) {
-      setTimeout(() => {
-        console.log('Restarting speech recognition after TTS...');
-        shouldAutoListenRef.current = true;
-        if (recognitionRef.current) {
-          try { 
-            recognitionRef.current.start(); 
-            console.log('Speech recognition restarted after TTS');
-          } catch (err) {
-            console.log('Failed to restart speech recognition:', err);
-          }
-        }
-      }, 3000); // Tăng delay lên 3 giây để tránh conflict
-    }
   };
   
   speechSynthesis.speak(utterance);
@@ -138,21 +122,6 @@ export const speakResult = async (
     }
     
     onEnd?.();
-    // Tiếp tục speech recognition sau khi đọc xong với delay dài hơn
-    if (recognitionRef?.current && shouldAutoListenRef) {
-      setTimeout(() => {
-        console.log('Restarting speech recognition after TTS...');
-        shouldAutoListenRef.current = true;
-        if (recognitionRef.current) {
-          try { 
-            recognitionRef.current.start(); 
-            console.log('Speech recognition restarted after TTS');
-          } catch (err) {
-            console.log('Failed to restart speech recognition:', err);
-          }
-        }
-      }, 3000); // Tăng delay lên 3 giây để tránh conflict
-    }
   };
   
   speechSynthesis.speak(utterance);

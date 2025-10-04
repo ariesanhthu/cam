@@ -13,6 +13,7 @@ interface UseVoiceControlProps {
   recognitionRef: React.RefObject<SpeechRecognition | null>;
   shouldAutoListenRef: React.MutableRefObject<boolean>;
   lastTTSEndTimeRef: React.MutableRefObject<number>;
+  restartListening?: () => void;
 }
 
 export const useVoiceControl = ({
@@ -21,7 +22,8 @@ export const useVoiceControl = ({
   setStatus,
   recognitionRef,
   shouldAutoListenRef,
-  lastTTSEndTimeRef
+  lastTTSEndTimeRef,
+  restartListening
 }: UseVoiceControlProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [waitingForTrigger, setWaitingForTrigger] = useState(true);
@@ -80,6 +82,22 @@ export const useVoiceControl = ({
             () => setStatus('Đang đọc kết quả...'),
             () => {
               setStatus('Hoàn tất! Hãy nói "bạn ơi!" để tiếp tục...');
+              // Sau khi TTS kết thúc, restart speech recognition để đợi "bạn ơi" tiếp theo
+              setTimeout(() => {
+                if (restartListening) {
+                  restartListening();
+                } else {
+                  shouldAutoListenRef.current = true;
+                  if (recognitionRef.current) {
+                    try { 
+                      recognitionRef.current.start(); 
+                      console.log('Speech recognition restarted after TTS completion');
+                    } catch (err) {
+                      console.log('Failed to restart speech recognition after TTS:', err);
+                    }
+                  }
+                }
+              }, 1000);
             },
             recognitionRef,
             shouldAutoListenRef,
@@ -89,13 +107,17 @@ export const useVoiceControl = ({
           setStatus('Hoàn tất! Hãy nói "bạn ơi!" để tiếp tục...');
           // Bật lại auto listen và tiếp tục nghe nếu không đọc
           setTimeout(() => {
-            shouldAutoListenRef.current = true;
-            if (recognitionRef.current) {
-              try { 
-                recognitionRef.current.start(); 
-                console.log('Speech recognition restarted after processing (no TTS)');
-              } catch (err) {
-                console.log('Failed to restart speech recognition:', err);
+            if (restartListening) {
+              restartListening();
+            } else {
+              shouldAutoListenRef.current = true;
+              if (recognitionRef.current) {
+                try { 
+                  recognitionRef.current.start(); 
+                  console.log('Speech recognition restarted after processing (no TTS)');
+                } catch (err) {
+                  console.log('Failed to restart speech recognition:', err);
+                }
               }
             }
           }, 1200);
@@ -114,20 +136,26 @@ export const useVoiceControl = ({
       setWaitingForTrigger(true);
       setWaitingForRequest(false);
       setCurrentRequest('');
-      setStatus('Hoàn tất! Hãy nói "bạn ơi!" để tiếp tục...');
       
-      // Tiếp tục listening sau khi xử lý xong với delay
-      setTimeout(() => {
-        shouldAutoListenRef.current = true;
-        if (recognitionRef.current) {
-          try { 
-            recognitionRef.current.start(); 
-            console.log('Speech recognition restarted after error handling');
-          } catch (err) {
-            console.log('Failed to restart speech recognition:', err);
+      // Chỉ restart speech recognition nếu không có TTS (vì TTS sẽ tự restart)
+      if (!settings.speak) {
+        setStatus('Hoàn tất! Hãy nói "bạn ơi!" để tiếp tục...');
+        setTimeout(() => {
+          if (restartListening) {
+            restartListening();
+          } else {
+            shouldAutoListenRef.current = true;
+            if (recognitionRef.current) {
+              try { 
+                recognitionRef.current.start(); 
+                console.log('Speech recognition restarted after error handling');
+              } catch (err) {
+                console.log('Failed to restart speech recognition:', err);
+              }
+            }
           }
-        }
-      }, 2000);
+        }, 2000);
+      }
     }
   }, [settings, showNotification, setStatus]); // Chỉ include stable dependencies
 

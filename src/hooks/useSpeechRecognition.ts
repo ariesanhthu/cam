@@ -60,9 +60,14 @@ export const useSpeechRecognition = ({
         console.log('Auto-restarting recognition...');
         setTimeout(() => {
           if (shouldAutoListenRef.current && recognitionRef.current && !isProcessing && !isSpeaking()) {
-            try { recognitionRef.current.start(); } catch {}
+            try { 
+              recognitionRef.current.start(); 
+              console.log('Speech recognition auto-restarted successfully');
+            } catch (err) {
+              console.log('Failed to auto-restart speech recognition:', err);
+            }
           }
-        }, 1000); // Delay để tránh restart quá nhanh
+        }, 1500); // Tăng delay để tránh restart quá nhanh và tránh ghi nhận âm thanh hệ thống
       }
     };
 
@@ -135,8 +140,9 @@ export const useSpeechRecognition = ({
           const now = Date.now();
           
           // Kiểm tra xem có phải vừa kết thúc TTS không
-          if (now - lastTTSEndTimeRef.current < 3000) {
+          if (now - lastTTSEndTimeRef.current < 4000) {
             console.log('Too soon after TTS ended, ignoring to prevent feedback');
+            onStatusChange('Đang đợi sau khi đọc xong...');
             return;
           }
           
@@ -208,11 +214,29 @@ export const useSpeechRecognition = ({
     }
   }, []);
 
+  const restartListening = useCallback(() => {
+    console.log('Restarting listening manually...');
+    shouldAutoListenRef.current = true;
+    if (recognitionRef.current && !isProcessing && !isSpeaking()) {
+      setTimeout(() => {
+        if (shouldAutoListenRef.current && recognitionRef.current && !isProcessing && !isSpeaking()) {
+          try { 
+            recognitionRef.current.start(); 
+            console.log('Speech recognition manually restarted');
+          } catch (err) {
+            console.log('Failed to manually restart speech recognition:', err);
+          }
+        }
+      }, 1000);
+    }
+  }, [isProcessing]);
+
   return {
     recognitionRef,
     shouldAutoListenRef,
     setupRecognition,
     startListening,
-    stopListening
+    stopListening,
+    restartListening
   };
 };
