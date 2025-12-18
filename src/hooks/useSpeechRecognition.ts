@@ -234,6 +234,23 @@ export const useSpeechRecognition = ({
     }
   }, []);
 
+  const restartListening = useCallback(() => {
+    console.log('Restarting listening manually...');
+    shouldAutoListenRef.current = true;
+    if (recognitionRef.current && !isProcessing && !isSpeaking()) {
+      setTimeout(() => {
+        if (shouldAutoListenRef.current && recognitionRef.current && !isProcessing && !isSpeaking()) {
+          try { 
+            recognitionRef.current.start(); 
+            console.log('Speech recognition manually restarted');
+          } catch (err) {
+            console.log('Failed to manually restart speech recognition:', err);
+          }
+        }
+      }, 1000);
+    }
+  }, [isProcessing]);
+
   return {
     recognitionRef,
     shouldAutoListenRef,

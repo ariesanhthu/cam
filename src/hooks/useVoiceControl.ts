@@ -12,6 +12,7 @@ interface UseVoiceControlProps {
   recognitionRef: React.RefObject<SpeechRecognition | null>;
   shouldAutoListenRef: React.MutableRefObject<boolean>;
   lastTTSEndTimeRef: React.MutableRefObject<number>;
+  restartListening?: () => void;
 }
 
 export const useVoiceControl = ({
@@ -20,7 +21,8 @@ export const useVoiceControl = ({
   setStatus,
   recognitionRef,
   shouldAutoListenRef,
-  lastTTSEndTimeRef
+  lastTTSEndTimeRef,
+  restartListening
 }: UseVoiceControlProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [waitingForTrigger, setWaitingForTrigger] = useState(true);

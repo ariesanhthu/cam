@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSettings } from '../hooks/useSettings';
 import { useNotification } from '../hooks/useNotification';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
@@ -24,6 +24,14 @@ export default function VoiceControlApp() {
   const { settings, setSettings, saveSettings, resetSettings, reloadFromDb, loaded } = useSettings();
   const { notification, showNotification } = useNotification({ settings, recognitionRef });
 
+  // Create a stable callback for restartListening
+  const restartListeningRef = useRef<(() => void) | null>(null);
+  const handleRestartListening = useCallback(() => {
+    if (restartListeningRef.current) {
+      restartListeningRef.current();
+    }
+  }, []);
+
   // Initialize voice control hook
   const {
     isProcessing,
@@ -40,11 +48,12 @@ export default function VoiceControlApp() {
     setIsListening,
     recognitionRef,
     shouldAutoListenRef,
-    lastTTSEndTimeRef
+    lastTTSEndTimeRef,
+    restartListening: handleRestartListening
   });
 
   // Initialize speech recognition hook
-  const { startListening, stopListening } = useSpeechRecognition({
+  const { startListening, stopListening, restartListening } = useSpeechRecognition({
     isProcessing,
     waitingForTrigger,
     waitingForRequest,
@@ -56,6 +65,9 @@ export default function VoiceControlApp() {
     onStatusChange: setStatus,
     setIsListening
   });
+
+  // Store restartListening in ref
+  restartListeningRef.current = restartListening;
 
   // Speech recognition được handle bởi useSpeechRecognition hook
   // Không cần setup ở đây nữa
