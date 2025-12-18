@@ -53,18 +53,20 @@ export const getAppSettingsFromDb = async (): Promise<Partial<Settings> | null> 
 
 export const saveAppSettingsToDb = async (settings: Settings): Promise<boolean> => {
   try {
-    const payload = { id: SETTINGS_ID, data: settings }
-    const { data, error, status } = await supabase
+    const payload = { id: SETTINGS_ID, data: settings };
+    const { error, status, data } = await supabase
       .from(SETTINGS_TABLE)
       .upsert(payload, { onConflict: 'id' })
+      .select('id'); // giúp vercel logs nhìn rõ
+
     if (error) {
-      console.warn('[Supabase] upsert settings error:', error)
-      return false
+      console.warn('[Supabase] upsert settings error:', error);
+      return false;
     }
-    console.log('[Supabase] upsert settings ok:', { status, data })
-    return true
+    console.log('[Supabase] upsert settings ok:', { status, data });
+    return true;
   } catch (e) {
-    console.warn('[Supabase] upsert settings exception:', e)
-    return false
+    console.warn('[Supabase] upsert settings exception:', e);
+    return false;
   }
-}
+};

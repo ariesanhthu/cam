@@ -1,7 +1,6 @@
 import { useRef, useCallback } from 'react';
 import { normalizeVN, containsTriggerWord, isSpeaking } from '../utils/speech';
 
-
 interface UseSpeechRecognitionProps {
   isProcessing: boolean;
   waitingForTrigger: boolean;
@@ -23,23 +22,45 @@ export const useSpeechRecognition = ({
 }: UseSpeechRecognitionProps) => {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const shouldAutoListenRef = useRef(false);
+
   const lastCaptureTimeRef = useRef(0);
   const waitingForTriggerRef = useRef(waitingForTrigger);
   const waitingForRequestRef = useRef(waitingForRequest);
-  const lastTTSEndTimeRef = useRef(0); // Track khi TTS kết thúc
-  
+
+  // ✅ FIX stale closure: luôn đọc state mới nhất trong handler
+  const isProcessingRef = useRef(isProcessing);
+  isProcessingRef.current = isProcessing;
+
+  // ✅ chống lặp final (Chrome/mobile hay bắn final lặp)
+  const lastFinalNormalizedRef = useRef('');
+
+  // Track khi TTS kết thúc (nếu bạn set từ ngoài, giữ ref này để đồng bộ)
+  const lastTTSEndTimeRef = useRef(0);
+
   // Sync ref với state
   waitingForTriggerRef.current = waitingForTrigger;
   waitingForRequestRef.current = waitingForRequest;
 
+  const safeStartRecognition = () => {
+    if (!recognitionRef.current) return;
+    try {
+      recognitionRef.current.start();
+    } catch {
+      // ignore InvalidStateError khi start quá sớm
+    }
+  };
+
   const setupRecognition = useCallback(() => {
-    const SpeechRecognition = (window as SpeechRecognitionWindow).SpeechRecognition || (window as SpeechRecognitionWindow).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
+    const SpeechRecognitionCtor =
+      (window as SpeechRecognitionWindow).SpeechRecognition ||
+      (window as SpeechRecognitionWindow).webkitSpeechRecognition;
+
+    if (!SpeechRecognitionCtor) {
       onStatusChange('Trình duyệt không hỗ trợ nhận diện giọng nói');
       return false;
     }
 
-    recognitionRef.current = new SpeechRecognition();
+    recognitionRef.current = new SpeechRecognitionCtor();
     recognitionRef.current.lang = 'vi-VN';
     recognitionRef.current.continuous = true;
     recognitionRef.current.interimResults = true;
@@ -54,15 +75,25 @@ export const useSpeechRecognition = ({
       console.log('Speech recognition ended');
       setIsListening?.(false);
       onStatusChange('Đã dừng nghe');
-      
-      // Chỉ restart nếu không đang xử lý, TTS không chạy và đã được enable
-      if (shouldAutoListenRef.current && recognitionRef.current && !isProcessing && !isSpeaking()) {
+
+      // ✅ dùng isProcessingRef để không bị stale
+      if (
+        shouldAutoListenRef.current &&
+        recognitionRef.current &&
+        !isProcessingRef.current &&
+        !isSpeaking()
+      ) {
         console.log('Auto-restarting recognition...');
         setTimeout(() => {
-          if (shouldAutoListenRef.current && recognitionRef.current && !isProcessing && !isSpeaking()) {
-            try { recognitionRef.current.start(); } catch {}
+          if (
+            shouldAutoListenRef.current &&
+            recognitionRef.current &&
+            !isProcessingRef.current &&
+            !isSpeaking()
+          ) {
+            safeStartRecognition();
           }
-        }, 1000); // Delay để tránh restart quá nhanh
+        }, 350); // ✅ Chrome/mobile cần delay ngắn để tránh start quá nhanh
       }
     };
 
@@ -78,132 +109,127 @@ export const useSpeechRecognition = ({
     };
 
     recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
-      console.log('=== ONRESULT DEBUG ===');
-      console.log('Event:', event);
-      console.log('Result index:', event.resultIndex);
-      console.log('Results length:', event.results.length);
-      
       let finalTranscript = '';
       let interimTranscript = '';
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
         const isFinal = event.results[i].isFinal;
-        console.log(`Result ${i}: "${transcript}" (final: ${isFinal})`);
-        
-        if (isFinal) {
-          finalTranscript += transcript + ' ';
-        } else {
-          interimTranscript += transcript;
-        }
+
+        if (isFinal) finalTranscript += transcript + ' ';
+        else interimTranscript += transcript;
       }
 
-      console.log('Final transcript:', finalTranscript);
-      console.log('Interim transcript:', interimTranscript);
+      const text = (finalTranscript || interimTranscript || '').trim();
+      if (!text) return;
 
-      const text = finalTranscript || interimTranscript;
-      if (text) {
-        console.log('Processing text:', text);
-        const normalizedText = normalizeVN(text.trim());
-        console.log('Normalized text:', normalizedText);
-        
-        // Nếu đang xử lý hoặc TTS đang chạy thì không làm gì cả
-        if (isProcessing || isSpeaking()) {
-          console.log('Currently processing or TTS speaking, ignoring result');
-          return;
-        }
+      // ✅ Nếu đang xử lý hoặc TTS đang chạy -> bỏ qua
+      if (isProcessingRef.current || isSpeaking()) return;
 
-        // Kiểm tra từ khóa "bạn ơi" để kích hoạt
-        if (waitingForTriggerRef.current) {
-          console.log('Waiting for trigger word, waitingForTrigger:', waitingForTriggerRef.current);
-          if (containsTriggerWord(text)) {
-            console.log('Trigger word detected!');
+      // =========================
+      // 1) Trigger: chỉ check trên FINAL (fix mobile kẹt + giảm double-fire)
+      // =========================
+      if (waitingForTriggerRef.current) {
+        const finalText = finalTranscript.trim();
+        if (finalText) {
+          const normalized = normalizeVN(finalText);
+
+          // chống final lặp
+          if (normalized && normalized === lastFinalNormalizedRef.current) {
+            return;
+          }
+          if (normalized) lastFinalNormalizedRef.current = normalized;
+
+          if (containsTriggerWord(finalText)) {
             onTriggerWord();
             return;
           }
-          onStatusChange('Nghe được: ' + text.trim() + ' (chờ "bạn ơi!")');
-          return;
         }
 
-        // Nếu đã kích hoạt và đang đợi request và có final transcript đủ dài thì xử lý
-        if (!waitingForTriggerRef.current && waitingForRequestRef.current && finalTranscript.trim() && finalTranscript.trim().split(' ').length >= 2) {
-          console.log('=== PROCESSING USER REQUEST ===');
-          console.log('waitingForTrigger:', waitingForTrigger);
-          console.log('finalTranscript:', finalTranscript.trim());
-          console.log('Word count:', finalTranscript.trim().split(' ').length);
-          console.log('Processing user request:', finalTranscript.trim());
-          const now = Date.now();
-          
-          // Kiểm tra xem có phải vừa kết thúc TTS không
-          if (now - lastTTSEndTimeRef.current < 3000) {
-            console.log('Too soon after TTS ended, ignoring to prevent feedback');
+        onStatusChange('Nghe được: ' + text + ' (chờ "bạn ơi!")');
+        return;
+      }
+
+      // =========================
+      // 2) Request: chỉ xử lý khi có FINAL đủ dài
+      // =========================
+      if (!waitingForTriggerRef.current && waitingForRequestRef.current) {
+        const finalText = finalTranscript.trim();
+
+        if (finalText) {
+          const normalized = normalizeVN(finalText);
+
+          // chống final lặp
+          if (normalized && normalized === lastFinalNormalizedRef.current) {
             return;
           }
-          
-          // Kiểm tra không phải trigger word trong request
-          if (containsTriggerWord(finalTranscript.trim())) {
-            console.log('Trigger word detected in request, ignoring');
+          if (normalized) lastFinalNormalizedRef.current = normalized;
+
+          // anti-feedback: tránh bắt lại ngay sau khi TTS kết thúc
+          const now = Date.now();
+          if (now - lastTTSEndTimeRef.current < 2500) return;
+
+          // không cho nói lại “bạn ơi” trong request
+          if (containsTriggerWord(finalText)) {
             onStatusChange('Vui lòng nói yêu cầu, không cần nói "bạn ơi!" nữa');
             return;
           }
-          
-          if (now - lastCaptureTimeRef.current > 2000) {
-            lastCaptureTimeRef.current = now;
-            onUserRequest(finalTranscript.trim());
-          } else {
-            console.log('Too soon since last request, ignoring');
+
+          // yêu cầu tối thiểu 2 từ
+          if (finalText.split(/\s+/).length >= 2) {
+            if (now - lastCaptureTimeRef.current > 1500) {
+              lastCaptureTimeRef.current = now;
+              onUserRequest(finalText);
+              return;
+            }
           }
-          console.log('=== END PROCESSING USER REQUEST ===');
-        } else if (!waitingForTriggerRef.current && waitingForRequestRef.current) {
-          console.log('Not enough words or not final:', finalTranscript.trim());
-          console.log('waitingForTrigger:', waitingForTriggerRef.current);
-          console.log('waitingForRequest:', waitingForRequestRef.current);
-          console.log('finalTranscript length:', finalTranscript.trim().split(' ').length);
-          onStatusChange('Nghe được: ' + text.trim());
-        } else if (!waitingForTriggerRef.current && !waitingForRequestRef.current) {
-          console.log('Not waiting for request, ignoring speech');
-          onStatusChange('Đang xử lý, không nghe thêm...');
+
+          onStatusChange('Nghe được: ' + finalText);
+          return;
         }
-      } else {
-        console.log('No text in result');
+
+        // chưa có final -> chỉ hiển thị interim
+        onStatusChange('Nghe được: ' + text);
+        return;
       }
-      console.log('=== END ONRESULT DEBUG ===');
+
+      // =========================
+      // 3) Không ở mode trigger/request -> đừng spam “đang xử lý”
+      // =========================
+      // Thay vì set status liên tục, chỉ log nhẹ
+      console.log('Not in trigger/request mode, ignoring speech');
     };
 
     return true;
-  }, [onStatusChange, setIsListening, onTriggerWord, onUserRequest]); // Chỉ include stable dependencies
+  }, [onStatusChange, setIsListening, onTriggerWord, onUserRequest]);
 
   const startListening = useCallback(async () => {
-    console.log('=== START LISTENING DEBUG ===');
-    console.log('recognitionRef.current:', recognitionRef.current);
-    console.log('shouldAutoListenRef.current:', shouldAutoListenRef.current);
-    console.log('isProcessing:', isProcessing);
-    console.log('waitingForTrigger:', waitingForTrigger);
-    
     if (!recognitionRef.current) {
-      console.log('Setting up recognition...');
       const success = setupRecognition();
       if (!success) return;
     }
+
     try {
-      console.log('Requesting microphone access...');
       await navigator.mediaDevices.getUserMedia({ audio: true });
       shouldAutoListenRef.current = true;
-      console.log('Starting recognition...');
-      if (recognitionRef.current) {
-        recognitionRef.current.start();
-      }
-      console.log('Recognition started successfully');
+
+      // reset anti-dup
+      lastFinalNormalizedRef.current = '';
+
+      safeStartRecognition();
     } catch (err) {
       console.error('Error starting listening:', err);
       throw new Error('Vui lòng cho phép sử dụng microphone');
     }
-    console.log('=== END START LISTENING DEBUG ===');
-  }, [setupRecognition]); // Chỉ include setupRecognition
+  }, [setupRecognition]);
 
   const stopListening = useCallback(() => {
     shouldAutoListenRef.current = false;
     if (recognitionRef.current) {
+      try {
+        // ✅ abort ổn định hơn stop trên Chrome/mobile
+        (recognitionRef.current as any).abort?.();
+      } catch {}
       try { recognitionRef.current.stop(); } catch {}
     }
   }, []);
@@ -213,6 +239,8 @@ export const useSpeechRecognition = ({
     shouldAutoListenRef,
     setupRecognition,
     startListening,
-    stopListening
+    stopListening,
+    // nếu bạn cần sync lastTTSEndTimeRef từ ngoài thì expose thêm:
+    lastTTSEndTimeRef
   };
 };

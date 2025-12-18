@@ -1,14 +1,13 @@
 import { useState, useCallback } from 'react';
 import { Notification } from '../types';
-import { speakText } from '../utils/speech';
 
 interface UseNotificationProps {
   settings: {
-    speak: boolean;
+    speak: boolean; // giữ interface để không phá chỗ khác
     voiceRate: number;
     voiceVolume: number;
   };
-  recognitionRef?: React.RefObject<SpeechRecognition | null>;
+  recognitionRef?: React.RefObject<SpeechRecognition | null>; // giữ cho tương thích
 }
 
 export const useNotification = ({ settings, recognitionRef }: UseNotificationProps) => {
@@ -18,15 +17,21 @@ export const useNotification = ({ settings, recognitionRef }: UseNotificationPro
     show: false
   });
 
-  const showNotification = useCallback((message: string, type: 'success' | 'error' = 'success') => {
-    setNotification({ message, type, show: true });
-    setTimeout(() => setNotification(prev => ({ ...prev, show: false })), 3000);
-    
-    // Speak notification
-    if (settings.speak && 'speechSynthesis' in window) {
-      speakText(message, { voiceRate: settings.voiceRate, voiceVolume: settings.voiceVolume }, recognitionRef);
-    }
-  }, [settings.speak, settings.voiceRate, settings.voiceVolume, recognitionRef]); // Include dependencies
+  const showNotification = useCallback(
+    (message: string, type: 'success' | 'error' = 'success') => {
+      // ✅ CHỈ HIỂN THỊ UI
+      setNotification({ message, type, show: true });
+
+      // auto hide sau 3s
+      setTimeout(() => {
+        setNotification(prev => ({ ...prev, show: false }));
+      }, 3000);
+
+      // ❌ KHÔNG ĐỌC TTS CHO NOTIFICATION
+      // (cố ý không gọi speakText để tránh chồng tiếng / bug mobile)
+    },
+    []
+  );
 
   return {
     notification,

@@ -101,6 +101,26 @@ export const SettingsPanel = ({
 
         {/* Voice Settings */}
         <div className="p-5 border border-gray-300 dark:border-gray-600 rounded-lg">
+          {/* Chọn ngôn ngữ đọc */}
+          <label className="block mb-2 font-medium text-sm">
+            Ngôn ngữ đọc
+          </label>
+          <select
+            value={settings.ttsLanguage}
+            onChange={(e) =>
+              onSettingsChange({
+                ...settings,
+                ttsLanguage: e.target.value as Settings["ttsLanguage"],
+                // Optional: nếu chuyển sang English thì ép provider về browser (ZTTS chủ yếu VN)
+                ...(e.target.value === "en-US" ? { ttsProvider: "browser" as any } : {}),
+              })
+            }
+            className="w-full p-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-base bg-white dark:bg-gray-800 text-black dark:text-white mb-4"
+          >
+            <option value="vi-VN">🇻🇳 Tiếng Việt (vi-VN)</option>
+            <option value="en-US">🇺🇸 English (en-US)</option>
+          </select>
+
           <h2 className="text-lg font-bold mb-4 text-sky-500">Giọng đọc</h2>
           
           <label className="block mb-2 font-medium text-sm">
@@ -128,6 +148,28 @@ export const SettingsPanel = ({
             onChange={(e) => onSettingsChange({ ...settings, voiceVolume: parseFloat(e.target.value) })}
             className="w-full mb-4"
           />
+          {/* Chọn engine TTS */}
+          <label className="block mb-2 font-medium text-sm">
+            Engine đọc
+          </label>
+          <select
+            value={settings.ttsProvider}
+            onChange={(e) =>
+              onSettingsChange({ ...settings, ttsProvider: e.target.value as any })
+            }
+            disabled={settings.ttsLanguage === "en-US"} // English -> Browser TTS thôi
+            className="w-full p-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-base bg-white dark:bg-gray-800 text-black dark:text-white mb-4 disabled:opacity-50"
+          >
+            <option value="browser">Trình duyệt (SpeechSynthesis)</option>
+            <option value="zalo">Zalo TTS (chất lượng Việt)</option>
+          </select>
+
+          {settings.ttsLanguage === "en-US" && (
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              English hiện dùng SpeechSynthesis của trình duyệt.
+            </p>
+          )}
+
         </div>
       </div>
     </div>
