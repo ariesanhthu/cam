@@ -53,7 +53,7 @@ export default function VoiceControlApp() {
   });
 
   // Initialize speech recognition hook
-  const { startListening, stopListening, restartListening } = useSpeechRecognition({
+  const { startListening, stopListening } = useSpeechRecognition({
     isProcessing,
     waitingForTrigger,
     waitingForRequest,
@@ -67,7 +67,7 @@ export default function VoiceControlApp() {
   });
 
   // Store restartListening in ref
-  restartListeningRef.current = restartListening;
+  // restartListeningRef.current = restartListening;
 
   // Speech recognition được handle bởi useSpeechRecognition hook
   // Không cần setup ở đây nữa
