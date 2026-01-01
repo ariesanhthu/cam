@@ -8,9 +8,8 @@ const defaultSettings: Settings = {
   speak: true,
   voiceRate: 1,
   voiceVolume: 1,
+  language: 'vi', // Ngôn ngữ mặc định: tiếng Việt (dùng cho cả API và TTS)
 
-  // NEW / hiện tại của bạn
-  ttsLanguage: 'vi-VN',
   ttsProvider: 'browser',
   zaloSpeakerId: 1,
   zaloSpeed: 1.0,
@@ -38,11 +37,11 @@ const mergeWithDefaults = (partial: Partial<Settings>): Settings => {
   merged.zaloSpeed = Math.min(1.2, Math.max(0.8, merged.zaloSpeed));
 
   // đảm bảo enum hợp lệ
-  if (merged.ttsLanguage !== 'vi-VN' && merged.ttsLanguage !== 'en-US') {
-    merged.ttsLanguage = 'vi-VN';
-  }
   if (merged.ttsProvider !== 'browser' && merged.ttsProvider !== 'zalo') {
     merged.ttsProvider = 'browser';
+  }
+  if (merged.language !== 'vi' && merged.language !== 'en') {
+    merged.language = 'vi';
   }
 
   // speaker_id hợp lệ 1..6
@@ -50,8 +49,8 @@ const mergeWithDefaults = (partial: Partial<Settings>): Settings => {
   // encode_type 0/1/2
   if (![0,1,2].includes(merged.zaloEncodeType as any)) merged.zaloEncodeType = 1;
 
-  // Nếu chọn tiếng Anh thì ép provider về browser (ZTTS chủ yếu VN)
-  if (merged.ttsLanguage === 'en-US') {
+  // Nếu chọn tiếng Anh thì ép provider về browser (Zalo TTS chỉ hỗ trợ tiếng Việt)
+  if (merged.language === 'en') {
     merged.ttsProvider = 'browser';
   }
 

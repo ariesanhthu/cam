@@ -20,6 +20,7 @@ export const sendToBackend = async (blob: Blob | null, promptText: string, setti
   }
   
   formData.append('prompt', promptText);
+  formData.append('language', settings.language || 'vi');
 
   // Ensure URL ends with /analyze endpoint
   let apiUrl = settings.backendUrl.trim();

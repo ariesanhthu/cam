@@ -114,9 +114,9 @@ export type SpeakSettings = {
   voiceRate: number;
   voiceVolume: number;
 
-  // optional: provider/language (tương thích ngược)
+  // optional: provider/language
   ttsProvider?: TTSProvider;
-  ttsLanguage?: "vi-VN" | "en-US";
+  language: "vi" | "en"; // Ngôn ngữ cho cả API và TTS (bắt buộc)
 
   // zalo options (optional)
   zaloSpeakerId?: number;
@@ -285,11 +285,11 @@ export const speakText = async (
       // ✅ chặn đọc chồng (browser + zalo)
       stopAllTTS();
 
-      // language: ưu tiên settings.ttsLanguage, default vi-VN
-      const lang = settings.ttsLanguage ?? "vi-VN";
+      // Map language (vi/en) thành ttsLanguage (vi-VN/en-US)
+      const lang: "vi-VN" | "en-US" = settings.language === "en" ? "en-US" : "vi-VN";
 
-      // ✅ AUTO fallback: chỉ dùng Zalo khi browser không có voice tiếng Việt
-      const useZalo = await shouldUseZaloFallback(lang);
+      // ✅ AUTO fallback: chỉ dùng Zalo khi browser không có voice tiếng Việt (và đang dùng tiếng Việt)
+      const useZalo = lang === "vi-VN" && (await shouldUseZaloFallback(lang));
 
       if (useZalo) {
         console.log("Using Zalo TTS fallback (browser has no Vietnamese voice)");
@@ -396,8 +396,11 @@ export const speakResult = async (
       // ✅ chặn đọc chồng (browser + zalo)
       stopAllTTS();
 
-      const lang = settings.ttsLanguage ?? "vi-VN";
-      const useZalo = await shouldUseZaloFallback(lang);
+      // Map language (vi/en) thành ttsLanguage (vi-VN/en-US)
+      const lang: "vi-VN" | "en-US" = settings.language === "en" ? "en-US" : "vi-VN";
+
+      // ✅ AUTO fallback: chỉ dùng Zalo khi browser không có voice tiếng Việt (và đang dùng tiếng Việt)
+      const useZalo = lang === "vi-VN" && (await shouldUseZaloFallback(lang));
 
       if (useZalo) {
         console.log("Using Zalo TTS fallback for result (browser has no Vietnamese voice)");

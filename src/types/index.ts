@@ -2,7 +2,6 @@
 export type TTSProvider = "browser" | "zalo";
 
 export interface Settings {
-  ttsLanguage: "vi-VN" | "en-US";
   ttsProvider: TTSProvider;
 
   backendUrl: string;
@@ -10,6 +9,7 @@ export interface Settings {
   speak: boolean;
   voiceRate: number;
   voiceVolume: number;
+  language: "vi" | "en"; // Ngôn ngữ cho cả backend API và text-to-speech
 
   // NEW: zalo tts
   zaloSpeakerId: 1 | 2 | 3 | 4 | 5 | 6;

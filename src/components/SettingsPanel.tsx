@@ -62,6 +62,44 @@ export const SettingsPanel = ({
             className="w-full p-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-base bg-white dark:bg-gray-800 text-black dark:text-white mb-4"
           />
         
+          {/* Chuyển đổi ngôn ngữ */}
+          <div className="mb-4">
+            <label className="block mb-2 font-medium text-sm">
+              Ngôn ngữ (cho cả API và giọng đọc)
+            </label>
+            <div className="flex gap-3">
+              <button
+                onClick={() => onSettingsChange({ 
+                  ...settings, 
+                  language: 'vi',
+                  // Khi chuyển sang tiếng Việt, có thể dùng Zalo
+                })}
+                className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors duration-200 ${
+                  settings.language === 'vi'
+                    ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                🇻🇳 Tiếng Việt
+              </button>
+              <button
+                onClick={() => onSettingsChange({ 
+                  ...settings, 
+                  language: 'en',
+                  // Khi chuyển sang tiếng Anh, ép provider về browser (Zalo chỉ hỗ trợ tiếng Việt)
+                  ttsProvider: 'browser'
+                })}
+                className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors duration-200 ${
+                  settings.language === 'en'
+                    ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                🇺🇸 English
+              </button>
+            </div>
+          </div>
+
           {/* Các tuỳ chọn liên quan giọng nói */}
           <div className="flex items-center gap-3 mb-3">
             <input
@@ -101,26 +139,6 @@ export const SettingsPanel = ({
 
         {/* Voice Settings */}
         <div className="p-5 border border-gray-300 dark:border-gray-600 rounded-lg">
-          {/* Chọn ngôn ngữ đọc */}
-          <label className="block mb-2 font-medium text-sm">
-            Ngôn ngữ đọc
-          </label>
-          <select
-            value={settings.ttsLanguage}
-            onChange={(e) =>
-              onSettingsChange({
-                ...settings,
-                ttsLanguage: e.target.value as Settings["ttsLanguage"],
-                // Optional: nếu chuyển sang English thì ép provider về browser (ZTTS chủ yếu VN)
-                ...(e.target.value === "en-US" ? { ttsProvider: "browser" as any } : {}),
-              })
-            }
-            className="w-full p-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-base bg-white dark:bg-gray-800 text-black dark:text-white mb-4"
-          >
-            <option value="vi-VN">🇻🇳 Tiếng Việt (vi-VN)</option>
-            <option value="en-US">🇺🇸 English (en-US)</option>
-          </select>
-
           <h2 className="text-lg font-bold mb-4 text-sky-500">Giọng đọc</h2>
           
           <label className="block mb-2 font-medium text-sm">
@@ -157,16 +175,16 @@ export const SettingsPanel = ({
             onChange={(e) =>
               onSettingsChange({ ...settings, ttsProvider: e.target.value as any })
             }
-            disabled={settings.ttsLanguage === "en-US"} // English -> Browser TTS thôi
+            disabled={settings.language === "en"} // English -> Browser TTS thôi (Zalo chỉ hỗ trợ tiếng Việt)
             className="w-full p-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-base bg-white dark:bg-gray-800 text-black dark:text-white mb-4 disabled:opacity-50"
           >
             <option value="browser">Trình duyệt (SpeechSynthesis)</option>
             <option value="zalo">Zalo TTS (chất lượng Việt)</option>
           </select>
 
-          {settings.ttsLanguage === "en-US" && (
+          {settings.language === "en" && (
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              English hiện dùng SpeechSynthesis của trình duyệt.
+              English hiện dùng SpeechSynthesis của trình duyệt (Zalo TTS chỉ hỗ trợ tiếng Việt).
             </p>
           )}
 

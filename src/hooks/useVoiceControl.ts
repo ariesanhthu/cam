@@ -111,9 +111,8 @@ export const useVoiceControl = ({
           {
             voiceRate: settings.voiceRate,
             voiceVolume: settings.voiceVolume,
-            // nếu bạn có thêm zalo settings thì truyền vào đây (optional)
             ttsProvider: settings.ttsProvider,
-            ttsLanguage: settings.ttsLanguage,
+            language: settings.language, // Ngôn ngữ cho cả API và TTS
             zaloSpeakerId: settings.zaloSpeakerId,
             zaloSpeed: settings.zaloSpeed,
             zaloEncodeType: settings.zaloEncodeType,
@@ -192,12 +191,12 @@ export const useVoiceControl = ({
     if (settings.speak) {
       // đọc cho UX, nhưng KHÔNG dùng onEnd để “mở request mode” nữa
       speakText(
-        'Bạn cần giúp gì?',
+        settings.language === 'en' ? 'How can I help you?' : 'Bạn cần giúp gì?',
         {
           voiceRate: settings.voiceRate,
           voiceVolume: settings.voiceVolume,
           ttsProvider: settings.ttsProvider,
-          ttsLanguage: settings.ttsLanguage,
+          language: settings.language, // Ngôn ngữ cho cả API và TTS
           zaloSpeakerId: settings.zaloSpeakerId,
           zaloSpeed: settings.zaloSpeed,
           zaloEncodeType: settings.zaloEncodeType,
