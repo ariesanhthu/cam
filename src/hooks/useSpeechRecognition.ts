@@ -9,6 +9,7 @@ interface UseSpeechRecognitionProps {
   onUserRequest: (text: string) => void;
   onStatusChange: (status: string) => void;
   setIsListening?: (listening: boolean) => void;
+  lastTTSEndTimeRef: React.MutableRefObject<number>;
 }
 
 export const useSpeechRecognition = ({
@@ -18,7 +19,8 @@ export const useSpeechRecognition = ({
   onTriggerWord,
   onUserRequest,
   onStatusChange,
-  setIsListening
+  setIsListening,
+  lastTTSEndTimeRef
 }: UseSpeechRecognitionProps) => {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const shouldAutoListenRef = useRef(false);
@@ -33,9 +35,10 @@ export const useSpeechRecognition = ({
 
   // ✅ chống lặp final (Chrome/mobile hay bắn final lặp)
   const lastFinalNormalizedRef = useRef('');
+  const lastFinalTimeRef = useRef(0);
 
   // Track khi TTS kết thúc (nếu bạn set từ ngoài, giữ ref này để đồng bộ)
-  const lastTTSEndTimeRef = useRef(0);
+  // const lastTTSEndTimeRef = useRef(0); // REMOVED internal ref, use prop
 
   // Sync ref với state
   waitingForTriggerRef.current = waitingForTrigger;
@@ -129,16 +132,34 @@ export const useSpeechRecognition = ({
       // =========================
       // 1) Trigger: chỉ check trên FINAL (fix mobile kẹt + giảm double-fire)
       // =========================
+      // =========================
+      // 1) Trigger: Check cả FINAL và INTERIM để phản hồi ngay lập tức
+      // =========================
       if (waitingForTriggerRef.current) {
+        // Check interim trước cho nhanh
+        const interimNormalized = normalizeVN(interimTranscript);
+        if (containsTriggerWord(interimNormalized)) {
+          // Found trigger in interim!
+          onTriggerWord();
+          return;
+        }
+
         const finalText = finalTranscript.trim();
         if (finalText) {
           const normalized = normalizeVN(finalText);
 
-          // chống final lặp
-          if (normalized && normalized === lastFinalNormalizedRef.current) {
+          // chống final lặp (chỉ chặn nếu < 1s)
+          const now = Date.now();
+          if (normalized &&
+            normalized === lastFinalNormalizedRef.current &&
+            now - lastFinalTimeRef.current < 1000
+          ) {
             return;
           }
-          if (normalized) lastFinalNormalizedRef.current = normalized;
+          if (normalized) {
+            lastFinalNormalizedRef.current = normalized;
+            lastFinalTimeRef.current = now;
+          }
 
           if (containsTriggerWord(finalText)) {
             onTriggerWord();
@@ -153,6 +174,9 @@ export const useSpeechRecognition = ({
       // =========================
       // 2) Request: chỉ xử lý khi có FINAL đủ dài
       // =========================
+      // =========================
+      // 2) Request: chỉ xử lý khi có FINAL đủ dài
+      // =========================
       if (!waitingForTriggerRef.current && waitingForRequestRef.current) {
         const finalText = finalTranscript.trim();
 
@@ -160,26 +184,49 @@ export const useSpeechRecognition = ({
           const normalized = normalizeVN(finalText);
 
           // chống final lặp
-          if (normalized && normalized === lastFinalNormalizedRef.current) {
+          const now = Date.now();
+          if (normalized &&
+            normalized === lastFinalNormalizedRef.current &&
+            now - lastFinalTimeRef.current < 1000
+          ) {
             return;
           }
-          if (normalized) lastFinalNormalizedRef.current = normalized;
+          if (normalized) {
+            lastFinalNormalizedRef.current = normalized;
+            lastFinalTimeRef.current = now;
+          }
 
           // anti-feedback: tránh bắt lại ngay sau khi TTS kết thúc
-          const now = Date.now();
-          if (now - lastTTSEndTimeRef.current < 2500) return;
+          // now already accepted from above
+          if (now - lastTTSEndTimeRef.current < 1000) return;
 
-          // không cho nói lại “bạn ơi” trong request
-          if (containsTriggerWord(finalText)) {
-            onStatusChange('Vui lòng nói yêu cầu, không cần nói "bạn ơi!" nữa');
-            return;
+          // Xử lý compound command: "bạn ơi [request]"
+          // Nếu người dùng nói liền: "Bạn ơi cho tôi hỏi cái này" -> trigger word nằm trong chính request
+          // Cần strip trigger word ra
+          let cleanText = finalText;
+          if (containsTriggerWord(cleanText)) {
+            // Remove "ban oi" variants
+            // Simple strip strategy: split by common triggers
+            const triggers = ["ban oi", "ba oi", "ba noi", "bac oi", "bang oi", "ban noi", "hey you"];
+            const norm = normalizeVN(cleanText);
+
+            // Tìm trigger nào match và remove
+            // Lưu ý: đây là strip trên normalized text, nhưng ta cần text gốc để gửi backend (có dấu)
+            // Cách đơn giản nhất: Nếu normalized startwith trigger -> slice text gốc tương ứng
+            // Tuy nhiên text gốc tiếng Việt có dấu khác độ dài.
+            // -> Fallback: Nếu câu chứa trigger, ta cứ gửi cả câu cho backend (backend AI hiểu được), 
+            // nhưng quan trọng là ĐỪNG CHẶN nó.
+
+            // Logic cũ: "Vui lòng nói yêu cầu, không cần nói 'bạn ơi!' nữa" -> CHẶN
+            // Logic mới: Cứ nhận luôn!
           }
 
-          // yêu cầu tối thiểu 2 từ
+          // yêu cầu tối thiểu 2 từ (nếu chưa strip)
+          // hoặc nếu strip rồi thì cũng cần check lại
           if (finalText.split(/\s+/).length >= 2) {
             if (now - lastCaptureTimeRef.current > 1500) {
               lastCaptureTimeRef.current = now;
-              onUserRequest(finalText);
+              onUserRequest(finalText); // gửi cả "bạn ơi..." backend AI sẽ tự hiểu
               return;
             }
           }

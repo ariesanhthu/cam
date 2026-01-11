@@ -21,7 +21,21 @@ export const normalizeVN = (str: string): string => {
 // =========================
 export const containsTriggerWord = (text: string): boolean => {
   const normalized = normalizeVN(text);
-  const hasTrigger = normalized.includes("ban oi");
+
+  // Các biến thể phổ biến của "bạn ơi" khi nhận diện giọng nói
+  const triggers = [
+    "ban oi",
+    "ba oi",
+    "ba noi",
+    "bac oi",
+    "bang oi",
+    "ban noi",
+    "hey you", // thêm tiếng Anh nếu cần
+    "ban oi ban oi"
+  ];
+
+  const hasTrigger = triggers.some(t => normalized.includes(t));
+
   console.log("containsTriggerWord check:", { text, normalized, hasTrigger });
   return hasTrigger;
 };
@@ -299,6 +313,7 @@ export const speakText = async (
   settings: SpeakSettings,
   recognitionRef?: React.RefObject<SpeechRecognition | null>,
   shouldAutoListenRef?: React.MutableRefObject<boolean>,
+  lastTTSEndTimeRef?: React.MutableRefObject<number>,
   onEnd?: () => void
 ): Promise<void> => {
   return enqueueTTS(async () => {
@@ -311,6 +326,13 @@ export const speakText = async (
       shouldAutoListenRef.current = false;
       console.log("Auto listen disabled for TTS");
     }
+
+    const markEnd = () => {
+      if (lastTTSEndTimeRef) {
+        lastTTSEndTimeRef.current = Date.now();
+        console.log("TTS end timestamp set:", lastTTSEndTimeRef.current);
+      }
+    };
 
     try {
       // ✅ chặn đọc chồng (browser + zalo)
@@ -333,10 +355,9 @@ export const speakText = async (
         });
 
         console.log("Zalo TTS ended (speakText)");
+        markEnd();
         onEnd?.();
-        restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef, 3000);
-        console.log("=== END SPEAK TEXT DEBUG ===");
-        return; // ✅ quan trọng: return để không chạy browser TTS
+        return;
       }
 
       // Browser SpeechSynthesis
@@ -365,28 +386,38 @@ export const speakText = async (
         return;
       }
 
-      utterance.onstart = () => {
-        console.log("Speech synthesis started");
-      };
+      // Wrap browser speech in a promise to wait for it
+      await new Promise<void>((resolve, reject) => {
+        utterance.onstart = () => {
+          console.log("Speech synthesis started");
+        };
 
-      utterance.onend = () => {
-        console.log("Speech synthesis ended");
-        onEnd?.();
-        restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef, 3000);
-      };
+        utterance.onend = () => {
+          console.log("Speech synthesis ended");
+          markEnd();
+          onEnd?.();
+          resolve();
+        };
 
-      utterance.onerror = (e) => {
-        console.log("Speech synthesis error:", e);
-        onEnd?.();
-        restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef, 3000);
-      };
+        utterance.onerror = (e) => {
+          console.log("Speech synthesis error:", e);
+          markEnd();
+          onEnd?.();
+          // Dont reject main promise to avoid error logging, just finish
+          resolve();
+        };
 
-      speechSynthesis.speak(utterance);
+        speechSynthesis.speak(utterance);
+      });
       console.log("=== END SPEAK TEXT DEBUG ===");
+
     } catch (err) {
       console.error("speakText error:", err);
+      markEnd();
       onEnd?.();
-      restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef, 3000);
+    } finally {
+      // ✅ GUARANTEED RESTART
+      restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef, 300);
     }
   });
 };
@@ -446,8 +477,6 @@ export const speakResult = async (
         console.log("Zalo TTS ended (speakResult)");
         markEnd();
         onEnd?.();
-        restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef, 3000);
-        console.log("=== END SPEAK RESULT DEBUG ===");
         return;
       }
 
@@ -474,27 +503,33 @@ export const speakResult = async (
         return;
       }
 
-      utterance.onend = () => {
-        console.log("Speech synthesis ended");
-        markEnd();
-        onEnd?.();
-        restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef, 3000);
-      };
+      // Wrap browser speech
+      await new Promise<void>((resolve) => {
+        utterance.onend = () => {
+          console.log("Speech synthesis ended");
+          markEnd();
+          onEnd?.();
+          resolve();
+        };
 
-      utterance.onerror = (e) => {
-        console.log("Speech synthesis error:", e);
-        markEnd();
-        onEnd?.();
-        restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef, 3000);
-      };
+        utterance.onerror = (e) => {
+          console.log("Speech synthesis error:", e);
+          markEnd();
+          onEnd?.();
+          resolve();
+        };
 
-      speechSynthesis.speak(utterance);
+        speechSynthesis.speak(utterance);
+      });
       console.log("=== END SPEAK RESULT DEBUG ===");
+
     } catch (err) {
       console.error("speakResult error:", err);
       markEnd();
       onEnd?.();
-      restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef, 3000);
+    } finally {
+      // ✅ GUARANTEED RESTART
+      restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef, 300);
     }
   });
 };

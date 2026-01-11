@@ -33,13 +33,13 @@ export const useVoiceControl = ({
 
   const stopRecognitionSafe = () => {
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
+      try { recognitionRef.current.stop(); } catch { }
     }
   };
 
   const startRecognitionSafe = () => {
     if (recognitionRef.current) {
-      try { recognitionRef.current.start(); } catch {}
+      try { recognitionRef.current.start(); } catch { }
     }
   };
 
@@ -69,6 +69,7 @@ export const useVoiceControl = ({
     showNotification('Đang xử lý yêu cầu...');
 
     // Tạm dừng recognition để tránh loop
+    shouldAutoListenRef.current = false; // ✅ Fix: Đánh dấu không auto-restart trước khi stop
     stopRecognitionSafe();
 
     try {
@@ -118,14 +119,15 @@ export const useVoiceControl = ({
             zaloEncodeType: settings.zaloEncodeType,
           } as any,
           () => setStatus('Đang đọc kết quả...'),
-          () => setStatus('Hoàn tất! Hãy nói "bạn ơi!" để tiếp tục...'),
+          // onEnd:
+          () => {
+            // TTS xong -> reset về idle
+            resetToTriggerMode('Hoàn tất! Hãy nói "bạn ơi!" để tiếp tục...');
+          },
           recognitionRef,
           shouldAutoListenRef,
           lastTTSEndTimeRef
         );
-
-        // Sau speakResult xong: không tự start lại ở finally nữa
-        resetToTriggerMode('Hoàn tất! Hãy nói "bạn ơi!" để tiếp tục...');
         return;
       }
 
@@ -147,34 +149,36 @@ export const useVoiceControl = ({
       resetToTriggerMode('Có lỗi. Hãy nói "bạn ơi!" để thử lại...');
 
       // Nếu speak=false mới tự start lại ở đây (tránh double-start nếu speak=true)
+      // Nhưng vì speakText/speakResult đã bao bọc try/finally restart,
+      // ta chỉ cần lo restart nếu KHÔNG DÙNG TTS
       if (!settings.speak) {
         setTimeout(() => {
           shouldAutoListenRef.current = true;
           startRecognitionSafe();
           console.log('Speech recognition restarted after error (no TTS)');
-        }, 2000);
+        }, 1000);
       }
     } finally {
       setIsProcessing(false);
-
-      // QUAN TRỌNG: Đừng auto start lại trong finally khi settings.speak = true,
-      // vì speakText/speakResult sẽ lo việc đó (và bạn cũng đã stop/start ở nơi khác).
-      if (!settings.speak) {
-        // đã có các setTimeout start ở các nhánh trên; ở đây không cần start thêm nữa
-      }
+      // Không cần start lại ở đây vì:
+      // - Nếu SUCCESS + SPEAK -> speakResult lo
+      // - Nếu SUCCESS + NO SPEAK -> setTimeout ở trên lo
+      // - Nếu ERROR + SPEAK -> speakResult (trong catch của hàm gọi nó?) -> À khoan, speakResult nằm trong try.
+      // -> Nếu error xảy ra TRƯỚC khi gọi speakResult (ví dụ call backend lỗi) -> thì rơi vào catch -> restart manual (nếu no speak). 
+      // -> Nếu error xảy ra TRONG speakResult -> speakResult tự restart.
     }
   }, [settings, showNotification, setStatus]); // giữ như bạn: stable dependencies
 
   const handleTriggerWord = useCallback(() => {
     setWaitingForTrigger(false);
-  
+
     // ✅ set request mode NGAY LẬP TỨC (fix mobile kẹt)
     setWaitingForRequest(true);
     setStatus('Hãy nói yêu cầu của bạn...');
     showNotification('Đã nghe "bạn ơi!", hãy nói yêu cầu...');
-  
+
     clearRequestTimeout();
-  
+
     const armRequestTimeout = (ms: number) => {
       timeoutRef.current = setTimeout(() => {
         setWaitingForTrigger(true);
@@ -184,10 +188,10 @@ export const useVoiceControl = ({
         timeoutRef.current = null;
       }, ms);
     };
-  
+
     // arm timeout luôn, không phụ thuộc TTS end
     armRequestTimeout(settings.speak ? 7000 : 8000);
-  
+
     if (settings.speak) {
       // đọc cho UX, nhưng KHÔNG dùng onEnd để “mở request mode” nữa
       speakText(
@@ -202,11 +206,12 @@ export const useVoiceControl = ({
           zaloEncodeType: settings.zaloEncodeType,
         } as any,
         recognitionRef,
-        shouldAutoListenRef
+        shouldAutoListenRef,
+        lastTTSEndTimeRef
       );
     }
   }, [settings, showNotification, setStatus]);
-  
+
   return {
     isProcessing,
     waitingForTrigger,

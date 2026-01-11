@@ -20,7 +20,7 @@ export default function VoiceControlApp() {
   const isProcessingRef = useRef(false);
   const waitingForTriggerRef = useRef(true);
   const lastTTSEndTimeRef = useRef(0);
-  
+
   const { settings, setSettings, saveSettings, resetSettings, reloadFromDb, loaded } = useSettings();
   const { notification, showNotification } = useNotification({ settings, recognitionRef });
 
@@ -63,7 +63,8 @@ export default function VoiceControlApp() {
       handleUserRequest(text);
     },
     onStatusChange: setStatus,
-    setIsListening
+    setIsListening,
+    lastTTSEndTimeRef
   });
 
   // Store restartListening in ref
@@ -76,10 +77,10 @@ export default function VoiceControlApp() {
   useEffect(() => {
     isProcessingRef.current = isProcessing;
     waitingForTriggerRef.current = waitingForTrigger;
-    
+
     // Tạm dừng speech recognition khi đang xử lý
     if (isProcessing && recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
+      try { recognitionRef.current.stop(); } catch { }
     }
   }, [isProcessing, waitingForTrigger]);
 
@@ -123,12 +124,12 @@ export default function VoiceControlApp() {
       )}
       {/* Main Voice Control Screen */}
       <div className="flex flex-col items-center justify-center min-h-screen p-5 text-center">
-        <VoiceControlButton 
+        <VoiceControlButton
           isListening={isListening}
           onClick={() => isListening ? stopListening() : startListening()}
         />
-        
-        <StatusDisplay 
+
+        <StatusDisplay
           status={status}
           isProcessing={isProcessing}
           currentRequest={currentRequest}
@@ -139,9 +140,8 @@ export default function VoiceControlApp() {
       {/* Settings Button */}
       <button
         onClick={() => setSettingsOpen(true)}
-        className={`fixed top-5 right-5 w-15 h-15 rounded-full border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-black text-black dark:text-white text-2xl cursor-pointer shadow-lg transition-opacity duration-300 ${
-          settingsOpen ? 'opacity-0 pointer-events-none' : 'opacity-100 z-50'
-        }`}
+        className={`fixed top-5 right-5 w-15 h-15 rounded-full border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-black text-black dark:text-white text-2xl cursor-pointer shadow-lg transition-opacity duration-300 ${settingsOpen ? 'opacity-0 pointer-events-none' : 'opacity-100 z-50'
+          }`}
         aria-label="Mở cài đặt"
       >
         ⚙️
@@ -156,10 +156,10 @@ export default function VoiceControlApp() {
         onSave={async () => {
           try {
             await saveSettings();
-            showNotification('Đã lưu cài đặt!');
+            showNotification('Đã lưu cài đặt thành công!');
             await reloadFromDb();
           } catch {
-            showNotification('Lưu cài đặt thất bại', 'error');
+            showNotification('Đã lưu cài đặt local');
           }
         }}
         onReset={() => {
