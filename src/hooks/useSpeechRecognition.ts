@@ -1,5 +1,5 @@
 import { useRef, useCallback } from 'react';
-import { normalizeVN, containsTriggerWord, isSpeaking } from '../utils/speech';
+import { normalizeVN, containsTriggerWord, isSpeaking, unlockAudio } from '../utils/speech';
 
 interface UseSpeechRecognitionProps {
   isProcessing: boolean;
@@ -204,13 +204,19 @@ export const useSpeechRecognition = ({
   }, [onStatusChange, setIsListening, onTriggerWord, onUserRequest]);
 
   const startListening = useCallback(async () => {
+    // 1. Unlock audio on user interaction (mobile requirement)
+    unlockAudio();
+
     if (!recognitionRef.current) {
       const success = setupRecognition();
       if (!success) return;
     }
 
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      // ✅ REMOVED explicit getUserMedia call.
+      // SpeechRecognition handles permission internally.
+      // Calling getUserMedia separately causes issues on iOS/Android (stops recognition or conflicts).
+
       shouldAutoListenRef.current = true;
 
       // reset anti-dup
@@ -229,8 +235,8 @@ export const useSpeechRecognition = ({
       try {
         // ✅ abort ổn định hơn stop trên Chrome/mobile
         (recognitionRef.current as any).abort?.();
-      } catch {}
-      try { recognitionRef.current.stop(); } catch {}
+      } catch { }
+      try { recognitionRef.current.stop(); } catch { }
     }
   }, []);
 
@@ -240,8 +246,8 @@ export const useSpeechRecognition = ({
     if (recognitionRef.current && !isProcessing && !isSpeaking()) {
       setTimeout(() => {
         if (shouldAutoListenRef.current && recognitionRef.current && !isProcessing && !isSpeaking()) {
-          try { 
-            recognitionRef.current.start(); 
+          try {
+            recognitionRef.current.start();
             console.log('Speech recognition manually restarted');
           } catch (err) {
             console.log('Failed to manually restart speech recognition:', err);

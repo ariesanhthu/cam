@@ -64,7 +64,7 @@ const waitVoicesReady = (timeoutMs = 600) =>
       clearTimeout(t);
       try {
         speechSynthesis.removeEventListener("voiceschanged", handler);
-      } catch {}
+      } catch { }
       resolve();
     };
 
@@ -77,6 +77,37 @@ const waitVoicesReady = (timeoutMs = 600) =>
       resolve();
     }
   });
+
+// =========================
+// Audio Context / Unlock Helper (Mobile Safari/Chrome)
+// =========================
+export const unlockAudio = () => {
+  if (typeof window === "undefined") return;
+
+  // Create silent buffer
+  const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+  if (!AudioContext) return;
+
+  const ctx = new AudioContext();
+  const buffer = ctx.createBuffer(1, 1, 22050);
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(ctx.destination);
+
+  // Play silence
+  if (source.start) source.start(0);
+  else (source as any).noteOn(0);
+
+  // Resume context if suspended (common in newer browsers)
+  if (ctx.state === 'suspended') {
+    ctx.resume();
+  }
+
+  // Clean up
+  setTimeout(() => {
+    if (ctx.state !== 'closed') ctx.close();
+  }, 1000);
+};
 
 const hasVoiceForLang = (lang: string) => {
   if (typeof window === "undefined" || typeof speechSynthesis === "undefined") return false;
@@ -132,7 +163,7 @@ const stopRecognition = (recognitionRef?: React.RefObject<SpeechRecognition | nu
     try {
       recognitionRef.current.stop();
       console.log("Speech recognition stopped for TTS");
-    } catch {}
+    } catch { }
   }
 };
 
@@ -189,7 +220,7 @@ export const stopAllTTS = () => {
     if (typeof window !== "undefined" && typeof speechSynthesis !== "undefined") {
       speechSynthesis.cancel();
     }
-  } catch {}
+  } catch { }
 
   // Stop Zalo audio
   if (currentZaloAudio) {
@@ -198,7 +229,7 @@ export const stopAllTTS = () => {
       currentZaloAudio.onerror = null;
       currentZaloAudio.pause();
       currentZaloAudio.currentTime = 0;
-    } catch {}
+    } catch { }
     currentZaloAudio = null;
   }
 };
