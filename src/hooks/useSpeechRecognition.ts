@@ -54,6 +54,12 @@ export const useSpeechRecognition = ({
   };
 
   const setupRecognition = useCallback(() => {
+    // 1. Check Secure Context (HTTPS) - Mobile Requirement
+    if (typeof window !== 'undefined' && window.isSecureContext === false && window.location.hostname !== 'localhost' && !window.location.hostname.startsWith('127.0.0.')) {
+      onStatusChange('Lỗi: Cần chạy trên HTTPS (hoặc localhost) để dùng Microphone');
+      return false;
+    }
+
     const SpeechRecognitionCtor =
       (window as SpeechRecognitionWindow).SpeechRecognition ||
       (window as SpeechRecognitionWindow).webkitSpeechRecognition;
@@ -67,6 +73,27 @@ export const useSpeechRecognition = ({
     recognitionRef.current.lang = 'vi-VN';
     recognitionRef.current.continuous = true;
     recognitionRef.current.interimResults = true;
+
+    // Mobile often needs maxAlternatives to be 1
+    (recognitionRef.current as any).maxAlternatives = 1;
+
+    // --- Enhanced Mobile Debugging Events ---
+    (recognitionRef.current as any).onaudiostart = () => {
+      console.log('Audio Context started');
+      // Chỉ update status nếu đang không xử lý gì quan trọng
+      if (!isProcessingRef.current) {
+        // onStatusChange('Đã kết nối micro...'); // Optional: ồn ào quá thì comment
+      }
+    };
+
+    (recognitionRef.current as any).onsoundstart = () => {
+      console.log('Sound detected');
+    };
+
+    (recognitionRef.current as any).onspeechstart = () => {
+      console.log('Speech detected');
+    };
+    // ----------------------------------------
 
     recognitionRef.current.onstart = () => {
       console.log('Speech recognition started');
@@ -86,7 +113,8 @@ export const useSpeechRecognition = ({
         !isProcessingRef.current &&
         !isSpeaking()
       ) {
-        console.log('Auto-restarting recognition...');
+        console.log('Auto-restarting recognition (Mobile fix: waiting longer)...');
+        // Mobile (Android Chrome) safe restart delay is >300ms. 
         setTimeout(() => {
           if (
             shouldAutoListenRef.current &&
@@ -96,16 +124,22 @@ export const useSpeechRecognition = ({
           ) {
             safeStartRecognition();
           }
-        }, 350); // ✅ Chrome/mobile cần delay ngắn để tránh start quá nhanh
+        }, 500);
       }
     };
 
     recognitionRef.current.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.log('Speech recognition error:', event.error);
+
       if (event.error === 'no-speech') {
-        onStatusChange('Không nghe thấy giọng nói');
+        // Normal on mobile if silence. Just let onend restart it.
+        onStatusChange('Không nghe thấy gì...');
       } else if (event.error === 'not-allowed') {
-        onStatusChange('Vui lòng cho phép sử dụng microphone');
+        onStatusChange('Lỗi: Bạn đã chặn Micro. Hãy cho phép trong cài đặt trình duyệt.');
+      } else if (event.error === 'network') {
+        onStatusChange('Lỗi mạng: Kiểm tra kết nối internet.');
+      } else if (event.error === 'aborted') {
+        // Ignore aborted user action
       } else {
         onStatusChange('Lỗi: ' + event.error);
       }
