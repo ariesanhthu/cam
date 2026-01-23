@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Settings } from '../types';
 
 interface SettingsPanelProps {
@@ -7,6 +8,10 @@ interface SettingsPanelProps {
   onSettingsChange: (settings: Settings) => void;
   onSave: () => void;
   onReset: () => void;
+  imageUrl?: string | null;
+  imageLoading?: boolean;
+  imageError?: string | null;
+  onRefreshImage?: () => void;
 }
 
 export const SettingsPanel = ({ 
@@ -15,8 +20,13 @@ export const SettingsPanel = ({
   onClose, 
   onSettingsChange, 
   onSave, 
-  onReset 
+  onReset,
+  imageUrl,
+  imageLoading,
+  imageError,
+  onRefreshImage
 }: SettingsPanelProps) => {
+  const [activeTab, setActiveTab] = useState<'settings' | 'debug'>('settings');
   return (
     <div className={`fixed top-0 right-0 w-full max-w-lg h-screen bg-white dark:bg-gray-900 border-l border-gray-300 dark:border-gray-600 transition-transform duration-300 overflow-y-auto z-40 p-20 ${
       settingsOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full'
@@ -31,23 +41,52 @@ export const SettingsPanel = ({
       
       {/* Action bar trên cùng */}
       <div className="sticky top-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 supports-[backdrop-filter]:dark:bg-gray-900/60 z-10 -mt-4 -mx-5 px-5 pt-4 pb-3 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex gap-3">
+        {/* Tabs */}
+        <div className="flex gap-2 mb-3">
           <button
-            onClick={onSave}
-            className="flex-1 py-3 bg-green-500 hover:bg-green-600 text-white font-medium rounded-lg transition-colors duration-200"
+            onClick={() => setActiveTab('settings')}
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors duration-200 ${
+              activeTab === 'settings'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+            }`}
           >
-            💾 Lưu
+            ⚙️ Cài đặt
           </button>
           <button
-            onClick={onReset}
-            className="flex-1 py-3 bg-gray-500 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors duration-200"
+            onClick={() => setActiveTab('debug')}
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors duration-200 ${
+              activeTab === 'debug'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+            }`}
           >
-            🔄 Reset
+            🐛 Debug
           </button>
         </div>
+
+        {/* Action buttons - chỉ hiện khi tab Settings */}
+        {activeTab === 'settings' && (
+          <div className="flex gap-3">
+            <button
+              onClick={onSave}
+              className="flex-1 py-3 bg-green-500 hover:bg-green-600 text-white font-medium rounded-lg transition-colors duration-200"
+            >
+              💾 Lưu
+            </button>
+            <button
+              onClick={onReset}
+              className="flex-1 py-3 bg-gray-500 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors duration-200"
+            >
+              🔄 Reset
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="space-y-8 mt-6">
+        {activeTab === 'settings' && (
+          <>
         {/* Backend Settings */}
         <div className="p-5 border border-gray-300 dark:border-gray-600 rounded-lg">
           <h2 className="text-lg font-bold mb-4 text-sky-500">Backend Server</h2>
@@ -189,6 +228,63 @@ export const SettingsPanel = ({
           )}
 
         </div>
+        </>
+        )}
+
+        {activeTab === 'debug' && (
+          <div className="space-y-6">
+            <div className="p-5 border border-gray-300 dark:border-gray-600 rounded-lg">
+              <h2 className="text-lg font-bold mb-4 text-sky-500">Debug: Ảnh từ Supabase</h2>
+              
+              {onRefreshImage && (
+                <button
+                  onClick={onRefreshImage}
+                  className="mb-4 w-full py-2 px-4 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors duration-200"
+                >
+                  🔄 Refresh Ảnh
+                </button>
+              )}
+
+              {imageLoading && (
+                <div className="p-4 border border-gray-300 dark:border-gray-600 rounded">
+                  <p>Đang tải ảnh...</p>
+                </div>
+              )}
+              
+              {imageError && (
+                <div className="p-4 border border-red-500 rounded bg-red-50 dark:bg-red-900/20">
+                  <p className="text-red-600 dark:text-red-400 font-semibold mb-2">⚠️ Lỗi: {imageError}</p>
+                  {imageError.includes('Bucket "cam" đang trống') && (
+                    <div className="mt-3 text-sm text-red-700 dark:text-red-300">
+                      <p className="font-semibold mb-1">Hướng dẫn:</p>
+                      <ol className="list-decimal list-inside space-y-1">
+                        <li>Vào Supabase Dashboard</li>
+                        <li>Chọn Storage → Bucket "cam"</li>
+                        <li>Tạo folder "cam01" (nếu chưa có)</li>
+                        <li>Upload file ảnh với tên "image.jpg" vào folder "cam01"</li>
+                        <li>Nhấn Refresh Ảnh để kiểm tra</li>
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {imageUrl && !imageLoading && (
+                <div className="p-4 border border-green-500 rounded bg-green-50 dark:bg-green-900/20">
+                  <p className="text-green-600 dark:text-green-400 mb-2">✓ Đã tải ảnh thành công!</p>
+                  <img 
+                    src={imageUrl} 
+                    alt="Ảnh từ Supabase" 
+                    className="max-w-full h-auto rounded shadow-lg"
+                    onError={(e) => {
+                      console.error('[DEBUG] Lỗi hiển thị ảnh:', e);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -43,27 +43,93 @@ export const getSupabaseClient = (): SupabaseClient | null => {
   return supabase;
 };
 
-// Function để lấy ảnh từ Supabase Storage
-export const fetchImageFromSupabase = async (bucketName: string, imagePath: string): Promise<Blob | null> => {
+// Function để list files trong bucket (debug)
+export const listFilesInBucket = async (bucketName: string, folderPath?: string): Promise<string[]> => {
   const client = getSupabaseClient();
   if (!client) {
-    console.warn('[Supabase] Không thể lấy ảnh: client chưa được khởi tạo');
-    return null;
+    console.warn('[Supabase] Không thể list files: client chưa được khởi tạo');
+    return [];
   }
 
   try {
     const { data, error } = await client.storage
       .from(bucketName)
+      .list(folderPath || '', {
+        limit: 100,
+        offset: 0,
+      });
+
+    if (error) {
+      console.error('[Supabase] Error listing files:', {
+        message: error.message,
+        statusCode: error.statusCode,
+        error: error.error,
+        bucketName,
+        folderPath,
+      });
+      return [];
+    }
+
+    const fileNames = data?.map(file => file.name) || [];
+    const fullPaths = folderPath 
+      ? fileNames.map(name => `${folderPath}/${name}`)
+      : fileNames;
+    console.log(`[Supabase] Files trong bucket "${bucketName}"${folderPath ? ` folder "${folderPath}"` : ''}:`, fullPaths);
+    return fullPaths;
+  } catch (error) {
+    console.error('[Supabase] Exception khi list files:', {
+      error: error instanceof Error ? error.message : String(error),
+      bucketName,
+      folderPath,
+    });
+    return [];
+  }
+};
+
+// Function để lấy ảnh từ Supabase Storage
+export const fetchImageFromSupabase = async (bucketName: string, imagePath: string): Promise<Blob | null> => {
+  const client = getSupabaseClient();
+  if (!client) {
+    console.warn('[Supabase] Không thể lấy ảnh: client chưa được khởi tạo');
+    console.warn('[Supabase] Config check:', {
+      hasUrl: !!supabaseUrl,
+      hasKey: !!supabaseAnonKey,
+      url: supabaseUrl ? `${supabaseUrl.substring(0, 20)}...` : 'missing',
+    });
+    return null;
+  }
+
+  try {
+    console.log('[Supabase] Đang download ảnh:', { bucketName, imagePath });
+    const { data, error } = await client.storage
+      .from(bucketName)
       .download(imagePath)
 
     if (error) {
-      console.error('Error downloading image from Supabase:', error)
+      console.error('[Supabase] Error downloading image:', {
+        message: error.message,
+        statusCode: error.statusCode,
+        error: error.error,
+        bucketName,
+        imagePath,
+      });
       return null
     }
 
+    if (!data) {
+      console.warn('[Supabase] Download thành công nhưng data null:', { bucketName, imagePath });
+      return null;
+    }
+
+    console.log('[Supabase] Download thành công, size:', data.size, 'bytes');
     return data
   } catch (error) {
-    console.error('Error fetching image from Supabase:', error)
+    console.error('[Supabase] Exception khi fetch image:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      bucketName,
+      imagePath,
+    });
     return null
   }
 }

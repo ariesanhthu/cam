@@ -8,7 +8,7 @@ interface ImageCaptureWindow extends Window {
 // Fetch image from Supabase storage
 export const fetchImageFromSupabaseStorage = async (): Promise<Blob | null> => {
   try {
-    const blob = await fetchImageFromSupabase('cam01', 'image.jpg');
+    const blob = await fetchImageFromSupabase('cam', 'cam01/image.jpg');
     return blob;
   } catch (error: unknown) {
     throw new Error('Lỗi tải ảnh từ Supabase: ' + (error instanceof Error ? error.message : 'Unknown error'));
