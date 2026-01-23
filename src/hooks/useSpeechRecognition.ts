@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { normalizeVN, containsTriggerWord, isSpeaking, unlockAudio } from '../utils/speech';
 
 interface UseSpeechRecognitionProps {
@@ -37,12 +37,22 @@ export const useSpeechRecognition = ({
   const lastFinalNormalizedRef = useRef('');
   const lastFinalTimeRef = useRef(0);
 
+  // ✅ Track thời gian khi trigger word được phát hiện - để tránh gửi request ngay sau trigger
+  const triggerWordDetectedTimeRef = useRef(0);
+
   // Track khi TTS kết thúc (nếu bạn set từ ngoài, giữ ref này để đồng bộ)
   // const lastTTSEndTimeRef = useRef(0); // REMOVED internal ref, use prop
 
   // Sync ref với state
   waitingForTriggerRef.current = waitingForTrigger;
   waitingForRequestRef.current = waitingForRequest;
+
+  // ✅ Reset trigger time khi chuyển về trigger mode
+  useEffect(() => {
+    if (waitingForTrigger) {
+      triggerWordDetectedTimeRef.current = 0;
+    }
+  }, [waitingForTrigger]);
 
   const safeStartRecognition = () => {
     if (!recognitionRef.current) return;
@@ -174,6 +184,7 @@ export const useSpeechRecognition = ({
         const interimNormalized = normalizeVN(interimTranscript);
         if (containsTriggerWord(interimNormalized)) {
           // Found trigger in interim!
+          triggerWordDetectedTimeRef.current = Date.now();
           onTriggerWord();
           return;
         }
@@ -196,6 +207,7 @@ export const useSpeechRecognition = ({
           }
 
           if (containsTriggerWord(finalText)) {
+            triggerWordDetectedTimeRef.current = Date.now();
             onTriggerWord();
             return;
           }
@@ -234,6 +246,19 @@ export const useSpeechRecognition = ({
           // now already accepted from above
           if (now - lastTTSEndTimeRef.current < 1000) return;
 
+          // ✅ FIX: Chờ ít nhất 800ms sau khi trigger word được phát hiện trước khi gửi request
+          // Điều này tránh trường hợp người dùng nói "bạn ơi" và ngay sau đó nói tiếp,
+          // cả câu được nhận diện như một final result và gửi đi luôn
+          const timeSinceTrigger = triggerWordDetectedTimeRef.current > 0 
+            ? now - triggerWordDetectedTimeRef.current 
+            : Infinity;
+          
+          if (timeSinceTrigger < 800) {
+            // Chưa đủ thời gian sau trigger word, chỉ hiển thị status
+            onStatusChange('Nghe được: ' + finalText + ' (đang chờ...)');
+            return;
+          }
+
           // Xử lý compound command: "bạn ơi [request]"
           // Nếu người dùng nói liền: "Bạn ơi cho tôi hỏi cái này" -> trigger word nằm trong chính request
           // Cần strip trigger word ra
@@ -260,6 +285,8 @@ export const useSpeechRecognition = ({
           if (finalText.split(/\s+/).length >= 2) {
             if (now - lastCaptureTimeRef.current > 1500) {
               lastCaptureTimeRef.current = now;
+              // Reset trigger time sau khi gửi request
+              triggerWordDetectedTimeRef.current = 0;
               onUserRequest(finalText); // gửi cả "bạn ơi..." backend AI sẽ tự hiểu
               return;
             }
