@@ -62,8 +62,7 @@ export const listFilesInBucket = async (bucketName: string, folderPath?: string)
     if (error) {
       console.error('[Supabase] Error listing files:', {
         message: error.message,
-        statusCode: error.statusCode,
-        error: error.error,
+        name: error.name,
         bucketName,
         folderPath,
       });
@@ -108,8 +107,7 @@ export const fetchImageFromSupabase = async (bucketName: string, imagePath: stri
     if (error) {
       console.error('[Supabase] Error downloading image:', {
         message: error.message,
-        statusCode: error.statusCode,
-        error: error.error,
+        name: error.name,
         bucketName,
         imagePath,
       });
