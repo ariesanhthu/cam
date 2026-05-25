@@ -2,17 +2,15 @@ import { useState, useCallback, useRef } from 'react';
 import { Settings } from '../types';
 import { captureFromDeviceCamera, fetchImageFromSupabaseStorage } from '../utils/camera';
 import { sendToBackend } from '../utils/backend';
-import { speakResult, speakText } from '../utils/speech';
+import { speakResult, speakText, type SpeakSettings } from '../utils/speech';
 
 interface UseVoiceControlProps {
   settings: Settings;
   showNotification: (message: string, type?: 'success' | 'error') => void;
   setStatus: (status: string) => void;
-  setIsListening: (listening: boolean) => void; // (bạn đang không dùng, giữ nguyên interface)
   recognitionRef: React.RefObject<SpeechRecognition | null>;
   shouldAutoListenRef: React.MutableRefObject<boolean>;
   lastTTSEndTimeRef: React.MutableRefObject<number>;
-  restartListening?: () => void;
 }
 
 export const useVoiceControl = ({
@@ -22,7 +20,6 @@ export const useVoiceControl = ({
   recognitionRef,
   shouldAutoListenRef,
   lastTTSEndTimeRef,
-  restartListening
 }: UseVoiceControlProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [waitingForTrigger, setWaitingForTrigger] = useState(true);
@@ -31,186 +28,186 @@ export const useVoiceControl = ({
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const stopRecognitionSafe = () => {
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch { }
-    }
-  };
+  const stopRecognitionSafe = useCallback(() => {
+    if (!recognitionRef.current) return;
 
-  const startRecognitionSafe = () => {
-    if (recognitionRef.current) {
-      try { recognitionRef.current.start(); } catch { }
-    }
-  };
+    try {
+      recognitionRef.current.abort?.();
+    } catch {}
 
-  const clearRequestTimeout = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-  };
+    try {
+      recognitionRef.current.stop();
+    } catch {}
+  }, [recognitionRef]);
 
-  const resetToTriggerMode = (statusText?: string) => {
+  const startRecognitionSafe = useCallback(() => {
+    if (!recognitionRef.current) return;
+
+    try {
+      recognitionRef.current.start();
+    } catch {}
+  }, [recognitionRef]);
+
+  const clearRequestTimeout = useCallback(() => {
+    if (!timeoutRef.current) return;
+    clearTimeout(timeoutRef.current);
+    timeoutRef.current = null;
+  }, []);
+
+  const resetToTriggerMode = useCallback((statusText?: string) => {
     setWaitingForTrigger(true);
     setWaitingForRequest(false);
     setCurrentRequest('');
-    setStatus(statusText ?? 'Hoàn tất! Hãy nói "bạn ơi!" để tiếp tục...');
-  };
+    setStatus(statusText ?? 'Hoan tat! Hay noi "ban oi!" de tiep tuc...');
+  }, [setStatus]);
 
-  const handleUserRequest = useCallback(async (promptText: string) => {
-    console.log('handleUserRequest called with:', promptText);
-    console.log('Current settings:', settings);
+  const handleUserRequest = useCallback(
+    async (promptText: string) => {
+      console.log('handleUserRequest called with:', promptText);
+      console.log('Current settings:', settings);
 
-    clearRequestTimeout();
+      clearRequestTimeout();
 
-    setIsProcessing(true);
-    setWaitingForRequest(false);
-    setStatus('Đang xử lý yêu cầu: ' + promptText);
-    showNotification('Đang xử lý yêu cầu...');
+      setIsProcessing(true);
+      setWaitingForRequest(false);
+      setStatus('Dang xu ly yeu cau: ' + promptText);
+      showNotification('Dang xu ly yeu cau...');
 
-    // Tạm dừng recognition để tránh loop
-    shouldAutoListenRef.current = false; // ✅ Fix: Đánh dấu không auto-restart trước khi stop
-    stopRecognitionSafe();
+      shouldAutoListenRef.current = false;
+      stopRecognitionSafe();
 
-    try {
-      let blob: Blob | null = null;
+      try {
+        let blob: Blob | null = null;
 
-      // Luôn đính kèm ảnh
-      if (settings.useDeviceCamera) {
-        blob = await captureFromDeviceCamera();
-        showNotification('Đã chụp ảnh từ thiết bị');
-        setStatus('Chụp ảnh từ thiết bị thành công');
-      } else {
-        blob = await fetchImageFromSupabaseStorage();
-      }
+        if (settings.useDeviceCamera) {
+          blob = await captureFromDeviceCamera();
+          showNotification('Da chup anh tu thiet bi');
+          setStatus('Chup anh tu thiet bi thanh cong');
+        } else {
+          blob = await fetchImageFromSupabaseStorage();
+        }
 
-      // Send to backend
-      setStatus('Đang gửi đến server...');
-      console.log('Sending to backend:', { blob: blob ? 'has blob' : 'no blob', promptText, backendUrl: settings.backendUrl });
+        setStatus('Dang gui den server...');
+        console.log('Sending to backend:', {
+          blob: blob ? 'has blob' : 'no blob',
+          promptText,
+          backendUrl: settings.backendUrl,
+        });
 
-      const result = await sendToBackend(blob, promptText, settings);
-      console.log('Backend response:', result);
+        const result = await sendToBackend(blob, promptText, settings);
+        console.log('Backend response:', result);
 
-      if (!result) {
-        setStatus('Không nhận được kết quả từ server');
-        showNotification('Không nhận được kết quả từ server', 'error');
-        resetToTriggerMode('Không nhận được kết quả. Hãy nói "bạn ơi!" để thử lại...');
-        return;
-      }
+        if (!result) {
+          setStatus('Khong nhan duoc ket qua tu server');
+          showNotification('Khong nhan duoc ket qua tu server', 'error');
+          resetToTriggerMode('Khong nhan duoc ket qua. Hay noi "ban oi!" de thu lai...');
+          return;
+        }
 
-      setStatus('Đã nhận kết quả');
+        setStatus('Da nhan ket qua');
 
-      if (settings.speak) {
-        // QUAN TRỌNG:
-        // Khi speak=true, speakResult sẽ:
-        // - stop recognition
-        // - phát TTS (browser hoặc zalo)
-        // - set lastTTSEndTimeRef
-        // - bật lại auto listen + start recognition (nếu bạn thiết kế như vậy)
-        await speakResult(
-          result,
-          {
+        if (settings.speak) {
+          const speakSettings: SpeakSettings = {
             voiceRate: settings.voiceRate,
             voiceVolume: settings.voiceVolume,
             ttsProvider: settings.ttsProvider,
-            language: settings.language, // Ngôn ngữ cho cả API và TTS
+            language: settings.language,
             zaloSpeakerId: settings.zaloSpeakerId,
             zaloSpeed: settings.zaloSpeed,
             zaloEncodeType: settings.zaloEncodeType,
-          } as any,
-          () => setStatus('Đang đọc kết quả...'),
-          // onEnd:
-          () => {
-            // TTS xong -> reset về idle
-            resetToTriggerMode('Hoàn tất! Hãy nói "bạn ơi!" để tiếp tục...');
-          },
-          recognitionRef,
-          shouldAutoListenRef,
-          lastTTSEndTimeRef
-        );
-        return;
-      }
+          };
 
-      // Nếu không đọc: tự bật lại nghe
-      setStatus('Hoàn tất! Hãy nói "bạn ơi!" để tiếp tục...');
-      setTimeout(() => {
-        shouldAutoListenRef.current = true;
-        startRecognitionSafe();
-        console.log('Speech recognition restarted after processing (no TTS)');
-      }, 1200);
+          await speakResult(
+            result,
+            speakSettings,
+            () => setStatus('Dang doc ket qua...'),
+            () => {
+              resetToTriggerMode('Hoan tat! Hay noi "ban oi!" de tiep tuc...');
+            },
+            recognitionRef,
+            shouldAutoListenRef,
+            lastTTSEndTimeRef
+          );
+          return;
+        }
 
-      resetToTriggerMode('Hoàn tất! Hãy nói "bạn ơi!" để tiếp tục...');
-    } catch (err: unknown) {
-      console.error('Error in handleUserRequest:', err);
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      showNotification('Lỗi xử lý: ' + msg, 'error');
-      setStatus('Lỗi xử lý: ' + msg);
-
-      resetToTriggerMode('Có lỗi. Hãy nói "bạn ơi!" để thử lại...');
-
-      // Nếu speak=false mới tự start lại ở đây (tránh double-start nếu speak=true)
-      // Nhưng vì speakText/speakResult đã bao bọc try/finally restart,
-      // ta chỉ cần lo restart nếu KHÔNG DÙNG TTS
-      if (!settings.speak) {
+        setStatus('Hoan tat! Hay noi "ban oi!" de tiep tuc...');
         setTimeout(() => {
           shouldAutoListenRef.current = true;
           startRecognitionSafe();
-          console.log('Speech recognition restarted after error (no TTS)');
-        }, 1000);
+          console.log('Speech recognition restarted after processing (no TTS)');
+        }, 1200);
+
+        resetToTriggerMode('Hoan tat! Hay noi "ban oi!" de tiep tuc...');
+      } catch (error: unknown) {
+        console.error('Error in handleUserRequest:', error);
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        showNotification('Loi xu ly: ' + message, 'error');
+        setStatus('Loi xu ly: ' + message);
+
+        resetToTriggerMode('Co loi. Hay noi "ban oi!" de thu lai...');
+
+        if (!settings.speak) {
+          setTimeout(() => {
+            shouldAutoListenRef.current = true;
+            startRecognitionSafe();
+            console.log('Speech recognition restarted after error (no TTS)');
+          }, 1000);
+        }
+      } finally {
+        setIsProcessing(false);
       }
-    } finally {
-      setIsProcessing(false);
-      // Không cần start lại ở đây vì:
-      // - Nếu SUCCESS + SPEAK -> speakResult lo
-      // - Nếu SUCCESS + NO SPEAK -> setTimeout ở trên lo
-      // - Nếu ERROR + SPEAK -> speakResult (trong catch của hàm gọi nó?) -> À khoan, speakResult nằm trong try.
-      // -> Nếu error xảy ra TRƯỚC khi gọi speakResult (ví dụ call backend lỗi) -> thì rơi vào catch -> restart manual (nếu no speak). 
-      // -> Nếu error xảy ra TRONG speakResult -> speakResult tự restart.
-    }
-  }, [settings, showNotification, setStatus]); // giữ như bạn: stable dependencies
+    },
+    [
+      clearRequestTimeout,
+      lastTTSEndTimeRef,
+      recognitionRef,
+      resetToTriggerMode,
+      settings,
+      setStatus,
+      shouldAutoListenRef,
+      showNotification,
+      startRecognitionSafe,
+      stopRecognitionSafe,
+    ]
+  );
 
   const handleTriggerWord = useCallback(() => {
     setWaitingForTrigger(false);
-
-    // ✅ set request mode NGAY LẬP TỨC (fix mobile kẹt)
     setWaitingForRequest(true);
-    setStatus('Hãy nói yêu cầu của bạn...');
-    showNotification('Đã nghe "bạn ơi!", hãy nói yêu cầu...');
+    setStatus('Hay noi yeu cau cua ban...');
+    showNotification('Da nghe "ban oi!", hay noi yeu cau...');
 
     clearRequestTimeout();
 
-    const armRequestTimeout = (ms: number) => {
-      timeoutRef.current = setTimeout(() => {
-        setWaitingForTrigger(true);
-        setWaitingForRequest(false);
-        setStatus('Hãy nói "bạn ơi!" để bắt đầu...');
-        showNotification('Hết thời gian chờ, hãy nói "bạn ơi!" lại');
-        timeoutRef.current = null;
-      }, ms);
-    };
-
-    // arm timeout luôn, không phụ thuộc TTS end
-    armRequestTimeout(settings.speak ? 7000 : 8000);
+    timeoutRef.current = setTimeout(() => {
+      setWaitingForTrigger(true);
+      setWaitingForRequest(false);
+      setStatus('Hay noi "ban oi!" de bat dau...');
+      showNotification('Het thoi gian cho, hay noi "ban oi!" lai');
+      timeoutRef.current = null;
+    }, settings.speak ? 7000 : 8000);
 
     if (settings.speak) {
-      // đọc cho UX, nhưng KHÔNG dùng onEnd để “mở request mode” nữa
-      speakText(
-        settings.language === 'en' ? 'How can I help you?' : 'Bạn cần giúp gì?',
-        {
-          voiceRate: settings.voiceRate,
-          voiceVolume: settings.voiceVolume,
-          ttsProvider: settings.ttsProvider,
-          language: settings.language, // Ngôn ngữ cho cả API và TTS
-          zaloSpeakerId: settings.zaloSpeakerId,
-          zaloSpeed: settings.zaloSpeed,
-          zaloEncodeType: settings.zaloEncodeType,
-        } as any,
+      const speakSettings: SpeakSettings = {
+        voiceRate: settings.voiceRate,
+        voiceVolume: settings.voiceVolume,
+        ttsProvider: settings.ttsProvider,
+        language: settings.language,
+        zaloSpeakerId: settings.zaloSpeakerId,
+        zaloSpeed: settings.zaloSpeed,
+        zaloEncodeType: settings.zaloEncodeType,
+      };
+
+      void speakText(
+        settings.language === 'en' ? 'How can I help you?' : 'Ban can giup gi?',
+        speakSettings,
         recognitionRef,
         shouldAutoListenRef,
         lastTTSEndTimeRef
       );
     }
-  }, [settings, showNotification, setStatus]);
+  }, [clearRequestTimeout, lastTTSEndTimeRef, recognitionRef, settings, setStatus, shouldAutoListenRef, showNotification]);
 
   return {
     isProcessing,
@@ -219,6 +216,6 @@ export const useVoiceControl = ({
     currentRequest,
     setCurrentRequest,
     handleUserRequest,
-    handleTriggerWord
+    handleTriggerWord,
   };
 };

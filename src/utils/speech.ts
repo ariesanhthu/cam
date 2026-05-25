@@ -1,11 +1,22 @@
-// src/utils/speech.ts
-/* eslint-disable no-console */
-
 import type React from "react";
 
-// =========================
-// Normalize Vietnamese text
-// =========================
+export const TRIGGER_PHRASES = [
+  "ban oi",
+  "ba oi",
+  "ba noi",
+  "bac oi",
+  "bang oi",
+  "ban noi",
+  "hey you",
+  "ban oi ban oi",
+] as const;
+
+export const REQUEST_AFTER_TRIGGER_DELAY_MS = 800;
+export const POST_TTS_RECOGNITION_GUARD_MS = 1000;
+
+const LEADING_TRIGGER_REGEX =
+  /^\s*(?:(?:bạn|ban|ba|bác|bac|bằng|bang)\s+(?:ơi|oi|nội|noi)|hey\s+you)(?:[\s,.:!?-]+(?:(?:bạn|ban|ba|bác|bac|bằng|bang)\s+(?:ơi|oi|nội|noi)|hey\s+you))*[\s,.:!?-]*/iu;
+
 export const normalizeVN = (str: string): string => {
   return (str || "")
     .toLowerCase()
@@ -16,42 +27,48 @@ export const normalizeVN = (str: string): string => {
     .trim();
 };
 
-// =========================
-// Trigger word detection
-// =========================
 export const containsTriggerWord = (text: string): boolean => {
   const normalized = normalizeVN(text);
-
-  // Các biến thể phổ biến của "bạn ơi" khi nhận diện giọng nói
-  const triggers = [
-    "ban oi",
-    "ba oi",
-    "ba noi",
-    "bac oi",
-    "bang oi",
-    "ban noi",
-    "hey you", // thêm tiếng Anh nếu cần
-    "ban oi ban oi"
-  ];
-
-  const hasTrigger = triggers.some(t => normalized.includes(t));
+  const hasTrigger = TRIGGER_PHRASES.some((trigger) => normalized.includes(trigger));
 
   console.log("containsTriggerWord check:", { text, normalized, hasTrigger });
   return hasTrigger;
 };
 
-// =========================
-// Check if TTS is currently speaking (browser TTS only)
-// =========================
+export const stripLeadingTriggerPhrase = (text: string): string => {
+  return (text || "").replace(LEADING_TRIGGER_REGEX, "").trim();
+};
+
+export const isTriggerOnlyText = (text: string): boolean => {
+  const normalized = normalizeVN(text);
+  if (!normalized) return false;
+
+  let remaining = normalized;
+
+  while (remaining) {
+    const matchedTrigger = TRIGGER_PHRASES.find(
+      (trigger) => remaining === trigger || remaining.startsWith(`${trigger} `)
+    );
+
+    if (!matchedTrigger) {
+      return false;
+    }
+
+    remaining =
+      remaining === matchedTrigger
+        ? ""
+        : remaining.slice(matchedTrigger.length).trim();
+  }
+
+  return true;
+};
+
 export const isSpeaking = (): boolean => {
   if (typeof window === "undefined") return false;
   if (typeof speechSynthesis === "undefined") return false;
   return speechSynthesis.speaking || speechSynthesis.pending;
 };
 
-// =========================
-// SpeechSynthesis voice helpers
-// =========================
 const waitVoicesReady = (timeoutMs = 600) =>
   new Promise<void>((resolve) => {
     if (typeof window === "undefined" || typeof speechSynthesis === "undefined") {
@@ -59,14 +76,13 @@ const waitVoicesReady = (timeoutMs = 600) =>
       return;
     }
 
-    // voices có sẵn -> resolve ngay
     if (speechSynthesis.getVoices().length > 0) {
       resolve();
       return;
     }
 
     let done = false;
-    const t = setTimeout(() => {
+    const timeout = setTimeout(() => {
       if (done) return;
       done = true;
       resolve();
@@ -75,69 +91,65 @@ const waitVoicesReady = (timeoutMs = 600) =>
     const handler = () => {
       if (done) return;
       done = true;
-      clearTimeout(t);
+      clearTimeout(timeout);
+
       try {
         speechSynthesis.removeEventListener("voiceschanged", handler);
-      } catch { }
+      } catch {}
+
       resolve();
     };
 
     try {
       speechSynthesis.addEventListener("voiceschanged", handler);
-      // kick để browser load voices
       speechSynthesis.getVoices();
     } catch {
-      clearTimeout(t);
+      clearTimeout(timeout);
       resolve();
     }
   });
 
-// =========================
-// Audio Context / Unlock Helper (Mobile Safari/Chrome)
-// =========================
 export const unlockAudio = () => {
   if (typeof window === "undefined") return;
 
-  // Create silent buffer
-  const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-  if (!AudioContext) return;
+  const AudioContextCtor =
+    window.AudioContext ||
+    (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) return;
 
-  const ctx = new AudioContext();
+  const ctx = new AudioContextCtor();
   const buffer = ctx.createBuffer(1, 1, 22050);
   const source = ctx.createBufferSource();
   source.buffer = buffer;
   source.connect(ctx.destination);
 
-  // Play silence
-  if (source.start) source.start(0);
-  else (source as any).noteOn(0);
+  source.start(0);
 
-  // Resume context if suspended (common in newer browsers)
-  if (ctx.state === 'suspended') {
-    ctx.resume();
+  if (ctx.state === "suspended") {
+    ctx.resume().catch(() => {});
   }
 
-  // Clean up
   setTimeout(() => {
-    if (ctx.state !== 'closed') ctx.close();
+    if (ctx.state !== "closed") {
+      ctx.close().catch(() => {});
+    }
   }, 1000);
 };
 
 const hasVoiceForLang = (lang: string) => {
   if (typeof window === "undefined" || typeof speechSynthesis === "undefined") return false;
+
   const voices = speechSynthesis.getVoices();
   const base = lang.split("-")[0];
-  return voices.some((v) => v.lang === lang) || voices.some((v) => v.lang.startsWith(base));
+
+  return (
+    voices.some((voice) => voice.lang === lang) ||
+    voices.some((voice) => voice.lang.startsWith(base))
+  );
 };
 
-/**
- * AUTO fallback:
- * - chỉ fallback Zalo khi đang đọc vi-VN nhưng browser KHÔNG có voice vi
- * - quan trọng: nếu voices rỗng -> coi như không có -> dùng Zalo ngay (đỡ chờ)
- */
 const shouldUseZaloFallback = async (ttsLanguage?: "vi-VN" | "en-US") => {
   if (ttsLanguage !== "vi-VN") return false;
-
   if (typeof window === "undefined" || typeof speechSynthesis === "undefined") return true;
 
   try {
@@ -150,72 +162,56 @@ const shouldUseZaloFallback = async (ttsLanguage?: "vi-VN" | "en-US") => {
   return !hasVoiceForLang("vi-VN");
 };
 
-// =========================
-// Types
-// =========================
 type TTSProvider = "browser" | "zalo";
 
 export type SpeakSettings = {
   voiceRate: number;
   voiceVolume: number;
-
-  // optional: provider/language
   ttsProvider?: TTSProvider;
-  language: "vi" | "en"; // Ngôn ngữ cho cả API và TTS (bắt buộc)
-
-  // zalo options (optional)
+  language: "vi" | "en";
   zaloSpeakerId?: number;
   zaloSpeed?: number;
   zaloEncodeType?: number;
 };
 
-// =========================
-// Recognition helpers
-// =========================
 const stopRecognition = (recognitionRef?: React.RefObject<SpeechRecognition | null>) => {
-  if (recognitionRef?.current) {
-    try {
-      recognitionRef.current.stop();
-      console.log("Speech recognition stopped for TTS");
-    } catch { }
-  }
+  if (!recognitionRef?.current) return;
+
+  try {
+    recognitionRef.current.abort?.();
+  } catch {}
+
+  try {
+    recognitionRef.current.stop();
+    console.log("Speech recognition stopped for TTS");
+  } catch {}
 };
 
 const restartRecognitionWithDelay = (
   recognitionRef?: React.RefObject<SpeechRecognition | null>,
   shouldAutoListenRef?: React.MutableRefObject<boolean>,
-  delayMs: number = 3000
+  delayMs: number = POST_TTS_RECOGNITION_GUARD_MS
 ) => {
   if (!recognitionRef?.current || !shouldAutoListenRef) return;
 
   setTimeout(() => {
     console.log("Restarting speech recognition after TTS...");
     shouldAutoListenRef.current = true;
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.start();
-        console.log("Speech recognition restarted after TTS");
-      } catch (err) {
-        console.log("Failed to restart speech recognition:", err);
-      }
+
+    try {
+      recognitionRef.current?.start();
+      console.log("Speech recognition restarted after TTS");
+    } catch (error) {
+      console.log("Failed to restart speech recognition:", error);
     }
   }, delayMs);
 };
 
-// =========================
-// GLOBAL TTS CONTROL (fix chồng nhiều lần)
-// =========================
-
-// Singleton Zalo audio instance đang phát
 let currentZaloAudio: HTMLAudioElement | null = null;
-
-// TTS queue/mutex: đảm bảo speak chạy tuần tự
 let ttsQueue: Promise<unknown> = Promise.resolve();
 
 const enqueueTTS = <T,>(fn: () => Promise<T>): Promise<T> => {
-  const run = async () => fn();
-  const next = ttsQueue.then(run, run);
-  // giữ queue luôn resolve để không bị "kẹt"
+  const next = ttsQueue.then(fn, fn);
   ttsQueue = next.then(
     () => undefined,
     () => undefined
@@ -223,34 +219,25 @@ const enqueueTTS = <T,>(fn: () => Promise<T>): Promise<T> => {
   return next;
 };
 
-/**
- * Stop ALL TTS:
- * - cancel browser speechSynthesis
- * - stop current Zalo audio (nếu có)
- */
 export const stopAllTTS = () => {
-  // Stop browser TTS
   try {
     if (typeof window !== "undefined" && typeof speechSynthesis !== "undefined") {
       speechSynthesis.cancel();
     }
-  } catch { }
+  } catch {}
 
-  // Stop Zalo audio
-  if (currentZaloAudio) {
-    try {
-      currentZaloAudio.onended = null;
-      currentZaloAudio.onerror = null;
-      currentZaloAudio.pause();
-      currentZaloAudio.currentTime = 0;
-    } catch { }
-    currentZaloAudio = null;
-  }
+  if (!currentZaloAudio) return;
+
+  try {
+    currentZaloAudio.onended = null;
+    currentZaloAudio.onerror = null;
+    currentZaloAudio.pause();
+    currentZaloAudio.currentTime = 0;
+  } catch {}
+
+  currentZaloAudio = null;
 };
 
-// =========================
-// ZALO TTS PLAYER
-// =========================
 export async function speakWithZaloTTS(
   text: string,
   settings: {
@@ -260,10 +247,9 @@ export async function speakWithZaloTTS(
     zaloEncodeType: number;
   }
 ) {
-  // ✅ chặn chồng audio
   stopAllTTS();
 
-  const res = await fetch("/api/tts", {
+  const response = await fetch("/api/tts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -274,17 +260,17 @@ export async function speakWithZaloTTS(
     }),
   });
 
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(`Zalo TTS failed: ${res.status} ${t}`);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Zalo TTS failed: ${response.status} ${detail}`);
   }
 
-  const { url } = (await res.json()) as { url: string };
-  if (!url) throw new Error("Missing audio url");
+  const { url } = (await response.json()) as { url: string };
+  if (!url) {
+    throw new Error("Missing audio url");
+  }
 
-  const proxied = `/api/tts/audio?url=${encodeURIComponent(url)}`;
-  const audio = new Audio(proxied);
-
+  const audio = new Audio(`/api/tts/audio?url=${encodeURIComponent(url)}`);
   audio.volume = Math.max(0, Math.min(1, settings.voiceVolume ?? 1));
   currentZaloAudio = audio;
 
@@ -293,21 +279,126 @@ export async function speakWithZaloTTS(
       if (currentZaloAudio === audio) currentZaloAudio = null;
       resolve();
     };
+
     audio.onerror = () => {
       console.error("Audio error event:", audio.error, { src: audio.src });
       if (currentZaloAudio === audio) currentZaloAudio = null;
       reject(new Error("Audio play error"));
     };
-    audio.play().catch((e) => {
+
+    audio.play().catch((error) => {
       if (currentZaloAudio === audio) currentZaloAudio = null;
-      reject(e);
+      reject(error);
     });
   });
 }
 
-// =========================
-// Text to speech (AUTO provider: browser unless no Vietnamese voice -> Zalo)
-// =========================
+const speakWithBrowserTTS = async (
+  text: string,
+  settings: SpeakSettings,
+  ttsLanguage: "vi-VN" | "en-US"
+): Promise<boolean> => {
+  if (typeof window === "undefined" || typeof speechSynthesis === "undefined") {
+    return false;
+  }
+
+  await waitVoicesReady(600);
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = ttsLanguage;
+  utterance.rate = settings.voiceRate;
+  utterance.volume = settings.voiceVolume;
+
+  const voices = speechSynthesis.getVoices();
+  const picked =
+    voices.find((voice) => voice.lang === utterance.lang) ||
+    voices.find((voice) => voice.lang.startsWith(utterance.lang.split("-")[0]));
+
+  if (picked) {
+    utterance.voice = picked;
+  }
+
+  if (utterance.lang === "vi-VN" && !picked) {
+    console.log("No Vietnamese voice in browser, browser TTS skipped");
+    return false;
+  }
+
+  await new Promise<void>((resolve) => {
+    utterance.onstart = () => {
+      console.log("Speech synthesis started");
+    };
+
+    utterance.onend = () => {
+      console.log("Speech synthesis ended");
+      resolve();
+    };
+
+    utterance.onerror = (error) => {
+      console.log("Speech synthesis error:", error);
+      resolve();
+    };
+
+    speechSynthesis.speak(utterance);
+  });
+
+  return true;
+};
+
+const resolveTTSProvider = async (
+  settings: SpeakSettings,
+  ttsLanguage: "vi-VN" | "en-US"
+): Promise<TTSProvider> => {
+  if (ttsLanguage === "en-US") {
+    return "browser";
+  }
+
+  if (settings.ttsProvider === "zalo") {
+    return "zalo";
+  }
+
+  return (await shouldUseZaloFallback(ttsLanguage)) ? "zalo" : "browser";
+};
+
+const speakWithResolvedProvider = async (
+  text: string,
+  settings: SpeakSettings,
+  debugLabel: string
+) => {
+  const ttsLanguage: "vi-VN" | "en-US" =
+    settings.language === "en" ? "en-US" : "vi-VN";
+  const provider = await resolveTTSProvider(settings, ttsLanguage);
+
+  console.log(`[${debugLabel}] Using ${provider} TTS`);
+
+  if (provider === "zalo") {
+    await speakWithZaloTTS(text, {
+      voiceVolume: settings.voiceVolume,
+      zaloSpeakerId: settings.zaloSpeakerId ?? 1,
+      zaloSpeed: settings.zaloSpeed ?? 1.0,
+      zaloEncodeType: settings.zaloEncodeType ?? 1,
+    });
+    return;
+  }
+
+  const didSpeakInBrowser = await speakWithBrowserTTS(text, settings, ttsLanguage);
+  if (didSpeakInBrowser) {
+    return;
+  }
+
+  if (ttsLanguage === "vi-VN") {
+    console.log(`[${debugLabel}] Browser voice unavailable, falling back to Zalo`);
+    await speakWithZaloTTS(text, {
+      voiceVolume: settings.voiceVolume,
+      zaloSpeakerId: settings.zaloSpeakerId ?? 1,
+      zaloSpeed: settings.zaloSpeed ?? 1.0,
+      zaloEncodeType: settings.zaloEncodeType ?? 1,
+    });
+    return;
+  }
+
+  throw new Error("speechSynthesis not supported");
+};
+
 export const speakText = async (
   text: string,
   settings: SpeakSettings,
@@ -320,111 +411,30 @@ export const speakText = async (
     console.log("=== SPEAK TEXT DEBUG ===");
     console.log("Speaking text:", text);
 
-    // Stop recognition + disable auto listen to avoid feedback
     stopRecognition(recognitionRef);
     if (shouldAutoListenRef) {
       shouldAutoListenRef.current = false;
       console.log("Auto listen disabled for TTS");
     }
 
-    const markEnd = () => {
+    try {
+      stopAllTTS();
+      await speakWithResolvedProvider(text, settings, "speakText");
+      console.log("=== END SPEAK TEXT DEBUG ===");
+    } catch (error) {
+      console.error("speakText error:", error);
+    } finally {
       if (lastTTSEndTimeRef) {
         lastTTSEndTimeRef.current = Date.now();
         console.log("TTS end timestamp set:", lastTTSEndTimeRef.current);
       }
-    };
 
-    try {
-      // ✅ chặn đọc chồng (browser + zalo)
-      stopAllTTS();
-
-      // Map language (vi/en) thành ttsLanguage (vi-VN/en-US)
-      const lang: "vi-VN" | "en-US" = settings.language === "en" ? "en-US" : "vi-VN";
-
-      // ✅ AUTO fallback: chỉ dùng Zalo khi browser không có voice tiếng Việt (và đang dùng tiếng Việt)
-      const useZalo = lang === "vi-VN" && (await shouldUseZaloFallback(lang));
-
-      if (useZalo) {
-        console.log("Using Zalo TTS fallback (browser has no Vietnamese voice)");
-
-        await speakWithZaloTTS(text, {
-          voiceVolume: settings.voiceVolume,
-          zaloSpeakerId: settings.zaloSpeakerId ?? 1,
-          zaloSpeed: settings.zaloSpeed ?? 1.0,
-          zaloEncodeType: settings.zaloEncodeType ?? 1,
-        });
-
-        console.log("Zalo TTS ended (speakText)");
-        markEnd();
-        onEnd?.();
-        return;
-      }
-
-      // Browser SpeechSynthesis
-      if (typeof window === "undefined" || typeof speechSynthesis === "undefined") {
-        console.log("speechSynthesis not supported");
-        return;
-      }
-
-      // đợi voices (nhẹ) để pick voice chuẩn hơn
-      await waitVoicesReady(600);
-
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = lang;
-      utterance.rate = settings.voiceRate;
-      utterance.volume = settings.voiceVolume;
-
-      const voices = speechSynthesis.getVoices();
-      const picked =
-        voices.find((v) => v.lang === utterance.lang) ||
-        voices.find((v) => v.lang.startsWith(utterance.lang.split("-")[0]));
-      if (picked) utterance.voice = picked;
-
-      // Guard: nếu đang muốn đọc vi-VN mà không pick được voice vi thì out
-      if (utterance.lang === "vi-VN" && !picked) {
-        console.log("No Vietnamese voice in browser -> skip browser TTS (prevent odd behavior)");
-        return;
-      }
-
-      // Wrap browser speech in a promise to wait for it
-      await new Promise<void>((resolve, reject) => {
-        utterance.onstart = () => {
-          console.log("Speech synthesis started");
-        };
-
-        utterance.onend = () => {
-          console.log("Speech synthesis ended");
-          markEnd();
-          onEnd?.();
-          resolve();
-        };
-
-        utterance.onerror = (e) => {
-          console.log("Speech synthesis error:", e);
-          markEnd();
-          onEnd?.();
-          // Dont reject main promise to avoid error logging, just finish
-          resolve();
-        };
-
-        speechSynthesis.speak(utterance);
-      });
-      console.log("=== END SPEAK TEXT DEBUG ===");
-
-    } catch (err) {
-      console.error("speakText error:", err);
-      markEnd();
       onEnd?.();
-    } finally {
-      // ✅ GUARANTEED RESTART
-      restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef, 300);
+      restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef);
     }
   });
 };
 
-// =========================
-// Speak result with callbacks (AUTO fallback: browser unless no Vietnamese voice -> Zalo)
-// =========================
 export const speakResult = async (
   text: string,
   settings: SpeakSettings,
@@ -438,98 +448,27 @@ export const speakResult = async (
     console.log("=== SPEAK RESULT DEBUG ===");
     console.log("Speaking result:", text);
 
-    // Stop recognition + disable auto listen to avoid feedback
     stopRecognition(recognitionRef);
     if (shouldAutoListenRef) {
       shouldAutoListenRef.current = false;
       console.log("Auto listen disabled for TTS result");
     }
 
-    const markEnd = () => {
+    try {
+      onStart?.();
+      stopAllTTS();
+      await speakWithResolvedProvider(text, settings, "speakResult");
+      console.log("=== END SPEAK RESULT DEBUG ===");
+    } catch (error) {
+      console.error("speakResult error:", error);
+    } finally {
       if (lastTTSEndTimeRef) {
         lastTTSEndTimeRef.current = Date.now();
         console.log("TTS end timestamp set:", lastTTSEndTimeRef.current);
       }
-    };
 
-    try {
-      onStart?.();
-
-      // ✅ chặn đọc chồng (browser + zalo)
-      stopAllTTS();
-
-      // Map language (vi/en) thành ttsLanguage (vi-VN/en-US)
-      const lang: "vi-VN" | "en-US" = settings.language === "en" ? "en-US" : "vi-VN";
-
-      // ✅ AUTO fallback: chỉ dùng Zalo khi browser không có voice tiếng Việt (và đang dùng tiếng Việt)
-      const useZalo = lang === "vi-VN" && (await shouldUseZaloFallback(lang));
-
-      if (useZalo) {
-        console.log("Using Zalo TTS fallback for result (browser has no Vietnamese voice)");
-
-        await speakWithZaloTTS(text, {
-          voiceVolume: settings.voiceVolume,
-          zaloSpeakerId: settings.zaloSpeakerId ?? 1,
-          zaloSpeed: settings.zaloSpeed ?? 1.0,
-          zaloEncodeType: settings.zaloEncodeType ?? 1,
-        });
-
-        console.log("Zalo TTS ended (speakResult)");
-        markEnd();
-        onEnd?.();
-        return;
-      }
-
-      // Browser SpeechSynthesis
-      if (typeof window === "undefined" || typeof speechSynthesis === "undefined") {
-        throw new Error("Trình duyệt không hỗ trợ đọc văn bản");
-      }
-
-      await waitVoicesReady(600);
-
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = lang;
-      utterance.rate = settings.voiceRate;
-      utterance.volume = settings.voiceVolume;
-
-      const voices = speechSynthesis.getVoices();
-      const picked =
-        voices.find((v) => v.lang === utterance.lang) ||
-        voices.find((v) => v.lang.startsWith(utterance.lang.split("-")[0]));
-      if (picked) utterance.voice = picked;
-
-      if (utterance.lang === "vi-VN" && !picked) {
-        console.log("No Vietnamese voice in browser -> skip browser TTS (prevent odd behavior)");
-        return;
-      }
-
-      // Wrap browser speech
-      await new Promise<void>((resolve) => {
-        utterance.onend = () => {
-          console.log("Speech synthesis ended");
-          markEnd();
-          onEnd?.();
-          resolve();
-        };
-
-        utterance.onerror = (e) => {
-          console.log("Speech synthesis error:", e);
-          markEnd();
-          onEnd?.();
-          resolve();
-        };
-
-        speechSynthesis.speak(utterance);
-      });
-      console.log("=== END SPEAK RESULT DEBUG ===");
-
-    } catch (err) {
-      console.error("speakResult error:", err);
-      markEnd();
       onEnd?.();
-    } finally {
-      // ✅ GUARANTEED RESTART
-      restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef, 300);
+      restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef);
     }
   });
 };

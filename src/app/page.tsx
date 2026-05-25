@@ -14,7 +14,7 @@ import { listFilesInBucket } from '../lib/supabase';
 
 export default function VoiceControlApp() {
   const [isListening, setIsListening] = useState(false);
-  const [status, setStatus] = useState('Bấm nút để bắt đầu');
+  const [status, setStatus] = useState('Bam nut de bat dau');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
@@ -22,22 +22,12 @@ export default function VoiceControlApp() {
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const shouldAutoListenRef = useRef(false);
-  const isProcessingRef = useRef(false);
-  const waitingForTriggerRef = useRef(true);
   const lastTTSEndTimeRef = useRef(0);
 
-  const { settings, setSettings, saveSettings, resetSettings, reloadFromDb, loaded } = useSettings();
+  const { settings, setSettings, saveSettings, resetSettings, reloadFromDb, loaded } =
+    useSettings();
   const { notification, showNotification } = useNotification({ settings, recognitionRef });
 
-  // Create a stable callback for restartListening
-  const restartListeningRef = useRef<(() => void) | null>(null);
-  const handleRestartListening = useCallback(() => {
-    if (restartListeningRef.current) {
-      restartListeningRef.current();
-    }
-  }, []);
-
-  // Initialize voice control hook
   const {
     isProcessing,
     waitingForTrigger,
@@ -45,19 +35,16 @@ export default function VoiceControlApp() {
     currentRequest,
     setCurrentRequest,
     handleUserRequest,
-    handleTriggerWord
+    handleTriggerWord,
   } = useVoiceControl({
     settings,
     showNotification,
     setStatus,
-    setIsListening,
     recognitionRef,
     shouldAutoListenRef,
     lastTTSEndTimeRef,
-    restartListening: handleRestartListening
   });
 
-  // Initialize speech recognition hook
   const { startListening, stopListening } = useSpeechRecognition({
     isProcessing,
     waitingForTrigger,
@@ -69,37 +56,18 @@ export default function VoiceControlApp() {
     },
     onStatusChange: setStatus,
     setIsListening,
-    lastTTSEndTimeRef
+    recognitionRef,
+    shouldAutoListenRef,
+    lastTTSEndTimeRef,
   });
 
-  // Store restartListening in ref
-  // restartListeningRef.current = restartListening;
-
-  // Speech recognition được handle bởi useSpeechRecognition hook
-  // Không cần setup ở đây nữa
-
-  // Sync refs với state - gộp lại để giảm re-render
   useEffect(() => {
-    isProcessingRef.current = isProcessing;
-    waitingForTriggerRef.current = waitingForTrigger;
-
-    // Tạm dừng speech recognition khi đang xử lý
-    if (isProcessing && recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch { }
-    }
-  }, [isProcessing, waitingForTrigger]);
-
-  // Initialize - chỉ chạy 1 lần
-  useEffect(() => {
-    // Welcome message - không tự động start listening
     setTimeout(() => {
-      showNotification('Chào mừng! Bấm nút để bắt đầu nghe giọng nói');
+      showNotification('Chao mung! Bam nut de bat dau nghe giong noi');
     }, 500);
-  }, []); // Empty dependency array - chỉ chạy 1 lần
+  }, [showNotification]);
 
-  // Function để load image từ Supabase
   const loadImage = useCallback(async () => {
-    // Cleanup URL cũ trước khi load mới
     if (imageUrl) {
       URL.revokeObjectURL(imageUrl);
       setImageUrl(null);
@@ -107,80 +75,70 @@ export default function VoiceControlApp() {
 
     setImageLoading(true);
     setImageError(null);
+
     try {
-      console.log('[DEBUG] ===== BẮT ĐẦU DEBUG SUPABASE =====');
-      console.log('[DEBUG] Đang lấy ảnh từ Supabase...');
+      console.log('[DEBUG] ===== START SUPABASE DEBUG =====');
+      console.log('[DEBUG] Dang lay anh tu Supabase...');
       console.log('[DEBUG] Bucket: cam, Path: cam01/image.jpg');
-      
-      // Thử list files trong bucket để debug
-      console.log('[DEBUG] Đang list files trong bucket "cam"...');
+
+      console.log('[DEBUG] Dang list files trong bucket "cam"...');
       const rootFiles = await listFilesInBucket('cam');
-      
+
       if (rootFiles.length === 0) {
-        const errorMsg = 'Bucket "cam" đang trống. Vui lòng upload file vào folder "cam01" trước.';
-        setImageError(errorMsg);
-        console.warn('[DEBUG] ⚠️ Bucket "cam" trống - không có file nào');
-        console.warn('[DEBUG] Hướng dẫn: Vào Supabase Dashboard > Storage > cam > Upload file vào folder "cam01/image.jpg"');
+        setImageError('Bucket "cam" dang trong. Vui long upload file vao folder "cam01".');
+        console.warn('[DEBUG] Bucket "cam" trong');
         return;
       }
-      
-      console.log('[DEBUG] ✓ Tìm thấy', rootFiles.length, 'item(s) trong bucket root:', rootFiles);
-      
-      // Kiểm tra xem có folder cam01 không
-      const hasCam01Folder = rootFiles.some(f => f === 'cam01' || f.includes('cam01'));
+
+      console.log('[DEBUG] Tim thay items trong bucket root:', rootFiles);
+
+      const hasCam01Folder = rootFiles.some((file) => file === 'cam01' || file.includes('cam01'));
       if (!hasCam01Folder) {
-        const errorMsg = `Folder "cam01" không tồn tại trong bucket. Items có sẵn: ${rootFiles.join(', ')}`;
-        setImageError(errorMsg);
-        console.warn('[DEBUG] ⚠️ Folder "cam01" không có trong bucket');
-        console.warn('[DEBUG] Items có sẵn:', rootFiles);
+        setImageError(`Folder "cam01" khong ton tai. Items san co: ${rootFiles.join(', ')}`);
+        console.warn('[DEBUG] Folder "cam01" khong co trong bucket');
         return;
       }
-      
-      // List files trong folder cam01
-      console.log('[DEBUG] Đang list files trong folder "cam01"...');
+
+      console.log('[DEBUG] Dang list files trong folder "cam01"...');
       const cam01Files = await listFilesInBucket('cam', 'cam01');
-      
+
       if (cam01Files.length === 0) {
-        const errorMsg = 'Folder "cam01" đang trống. Vui lòng upload file "image.jpg" vào folder này.';
-        setImageError(errorMsg);
-        console.warn('[DEBUG] ⚠️ Folder "cam01" trống - không có file nào');
+        setImageError('Folder "cam01" dang trong. Vui long upload file "image.jpg".');
+        console.warn('[DEBUG] Folder "cam01" trong');
         return;
       }
-      
-      console.log('[DEBUG] ✓ Tìm thấy', cam01Files.length, 'file(s) trong folder "cam01":', cam01Files);
-      
-      // Kiểm tra xem có file image.jpg không
-      const hasImageJpg = cam01Files.some(f => f.includes('image.jpg'));
+
+      console.log('[DEBUG] Tim thay files trong folder "cam01":', cam01Files);
+
+      const hasImageJpg = cam01Files.some((file) => file.includes('image.jpg'));
       if (!hasImageJpg) {
-        const errorMsg = `File "image.jpg" không tồn tại trong folder "cam01". Files có sẵn: ${cam01Files.join(', ')}`;
-        setImageError(errorMsg);
-        console.warn('[DEBUG] ⚠️ File "image.jpg" không có trong folder "cam01"');
-        console.warn('[DEBUG] Files có sẵn:', cam01Files);
+        setImageError(
+          `File "image.jpg" khong ton tai trong "cam01". Files san co: ${cam01Files.join(', ')}`
+        );
+        console.warn('[DEBUG] File "image.jpg" khong co trong folder "cam01"');
         return;
       }
-      
+
       const blob = await fetchImageFromSupabaseStorage();
       if (blob) {
-        const url = URL.createObjectURL(blob);
-        setImageUrl(url);
-        console.log('[DEBUG] ✓ Đã lấy ảnh thành công, size:', blob.size, 'bytes');
+        const nextImageUrl = URL.createObjectURL(blob);
+        setImageUrl(nextImageUrl);
+        console.log('[DEBUG] Lay anh thanh cong, size:', blob.size, 'bytes');
       } else {
-        const errorMsg = 'Không lấy được ảnh từ Supabase. Có thể do thiếu permissions (RLS policy).';
-        setImageError(errorMsg);
-        console.warn('[DEBUG] ✗ Không lấy được ảnh: blob null');
-        console.warn('[DEBUG] File tồn tại nhưng không download được - có thể do RLS policy');
+        setImageError('Khong lay duoc anh tu Supabase. Co the do policy hoac permissions.');
+        console.warn('[DEBUG] Blob null khi lay anh tu Supabase');
       }
-      console.log('[DEBUG] ===== KẾT THÚC DEBUG SUPABASE =====');
+
+      console.log('[DEBUG] ===== END SUPABASE DEBUG =====');
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Lỗi không xác định';
-      setImageError(errorMsg);
-      console.error('[DEBUG] ✗ Exception khi lấy ảnh:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Loi khong xac dinh';
+      setImageError(errorMessage);
+      console.error('[DEBUG] Exception khi lay anh:', error);
     } finally {
       setImageLoading(false);
     }
   }, [imageUrl]);
 
-  // Cleanup image URL khi component unmount
   useEffect(() => {
     return () => {
       if (imageUrl) {
@@ -189,42 +147,44 @@ export default function VoiceControlApp() {
     };
   }, [imageUrl]);
 
-
-  // Keyboard shortcuts
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
-        e.preventDefault();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code === 'Space') {
+        event.preventDefault();
         if (isListening) {
           stopListening();
         } else {
           startListening();
         }
       }
-      if (e.key === 's' && !settingsOpen) {
+
+      if (event.key === 's' && !settingsOpen) {
         setSettingsOpen(true);
       }
-      if (e.key === 'Escape' && settingsOpen) {
+
+      if (event.key === 'Escape' && settingsOpen) {
         setSettingsOpen(false);
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isListening, settingsOpen, startListening, stopListening]); // Include dependencies
+  }, [isListening, settingsOpen, startListening, stopListening]);
 
   return (
     <div className="min-h-screen bg-white dark:bg-black text-black dark:text-white font-sans">
       {!loaded && (
         <div className="fixed inset-0 flex items-center justify-center bg-white/70 dark:bg-black/70 z-50">
-          <div className="px-4 py-2 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">Đang tải cấu hình...</div>
+          <div className="px-4 py-2 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
+            Dang tai cau hinh...
+          </div>
         </div>
       )}
-      {/* Main Voice Control Screen */}
+
       <div className="flex flex-col items-center justify-center min-h-screen p-5 text-center">
         <VoiceControlButton
           isListening={isListening}
-          onClick={() => isListening ? stopListening() : startListening()}
+          onClick={() => (isListening ? stopListening() : startListening())}
         />
 
         <StatusDisplay
@@ -235,17 +195,16 @@ export default function VoiceControlApp() {
         />
       </div>
 
-      {/* Settings Button */}
       <button
         onClick={() => setSettingsOpen(true)}
-        className={`fixed top-5 right-5 w-15 h-15 rounded-full border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-black text-black dark:text-white text-2xl cursor-pointer shadow-lg transition-opacity duration-300 ${settingsOpen ? 'opacity-0 pointer-events-none' : 'opacity-100 z-50'
-          }`}
-        aria-label="Mở cài đặt"
+        className={`fixed top-5 right-5 w-15 h-15 rounded-full border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-black text-black dark:text-white text-2xl cursor-pointer shadow-lg transition-opacity duration-300 ${
+          settingsOpen ? 'opacity-0 pointer-events-none' : 'opacity-100 z-50'
+        }`}
+        aria-label="Mo cai dat"
       >
         ⚙️
       </button>
 
-      {/* Settings Panel */}
       <SettingsPanel
         settingsOpen={settingsOpen}
         settings={settings}
@@ -254,15 +213,15 @@ export default function VoiceControlApp() {
         onSave={async () => {
           try {
             await saveSettings();
-            showNotification('Đã lưu cài đặt thành công!');
+            showNotification('Da luu cai dat thanh cong!');
             await reloadFromDb();
           } catch {
-            showNotification('Đã lưu cài đặt local');
+            showNotification('Da luu cai dat local');
           }
         }}
         onReset={() => {
           resetSettings();
-          showNotification('Đã reset về mặc định!');
+          showNotification('Da reset ve mac dinh!');
         }}
         imageUrl={imageUrl}
         imageLoading={imageLoading}
@@ -270,7 +229,6 @@ export default function VoiceControlApp() {
         onRefreshImage={loadImage}
       />
 
-      {/* Notification */}
       <NotificationToast notification={notification} />
     </div>
   );

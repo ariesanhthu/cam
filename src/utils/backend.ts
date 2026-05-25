@@ -1,46 +1,42 @@
 import { Settings } from '../types';
 
-// Send to backend
-export const sendToBackend = async (blob: Blob | null, promptText: string, settings: Settings): Promise<string> => {
-  if (!settings.backendUrl.trim()) {
-    throw new Error('Chưa cài đặt địa chỉ server');
+export const sendToBackend = async (
+  blob: Blob | null,
+  promptText: string,
+  settings: Settings
+): Promise<string> => {
+  const backendUrl = settings.backendUrl.trim();
+  if (!backendUrl) {
+    throw new Error('Chua cai dat dia chi server');
   }
-  
+
+  let apiUrl: string;
+  try {
+    apiUrl = new URL(backendUrl).toString();
+  } catch {
+    throw new Error('Dia chi server khong hop le');
+  }
+
   const formData = new FormData();
-  
-  // Backend yêu cầu file bắt buộc, nếu không có thì tạo file trống
+
   if (blob) {
     const file = new File([blob], 'capture.jpg', { type: blob.type || 'image/jpeg' });
     formData.append('file', file);
   } else {
-    // Tạo file trống nếu không có ảnh
     const emptyBlob = new Blob([''], { type: 'image/jpeg' });
     const emptyFile = new File([emptyBlob], 'empty.jpg', { type: 'image/jpeg' });
     formData.append('file', emptyFile);
   }
-  
+
   formData.append('prompt', promptText);
   formData.append('language', settings.language || 'vi');
 
-  // Ensure URL ends with /analyze endpoint
-  let apiUrl = settings.backendUrl.trim();
-  if (!apiUrl.endsWith('/analyze')) {
-    apiUrl = apiUrl.replace(/\/$/, '') + '/analyze';
-  }
-  
-  // Validate URL format
-  try {
-    new URL(apiUrl);
-  } catch {
-    throw new Error('Địa chỉ server không hợp lệ');
-  }
-  
-  // Debug: log request details
   console.log('=== BACKEND REQUEST DEBUG ===');
   console.log('Sending to:', apiUrl);
   console.log('Prompt text:', promptText);
   console.log('Settings:', settings);
   console.log('FormData contents:');
+
   for (const [key, value] of formData.entries()) {
     if (value instanceof File) {
       console.log(key, `File: ${value.name}, size: ${value.size}, type: ${value.type}`);
@@ -48,16 +44,14 @@ export const sendToBackend = async (blob: Blob | null, promptText: string, setti
       console.log(key, value);
     }
   }
+
   console.log('=== END DEBUG ===');
-  
+
   try {
     const response = await fetch(apiUrl, {
       method: 'POST',
       body: formData,
       mode: 'cors',
-      headers: {
-        // Không set Content-Type, để browser tự set với boundary cho FormData
-      }
     });
 
     console.log('Response status:', response.status);
@@ -70,20 +64,20 @@ export const sendToBackend = async (blob: Blob | null, promptText: string, setti
     }
 
     const contentType = response.headers.get('content-type') || '';
-    let result = '';
-    
     console.log('Response content-type:', contentType);
-    
+
+    let result = '';
+
     if (contentType.includes('application/json')) {
       const data = await response.json();
       console.log('Response JSON data:', data);
-      // Backend trả về { "status": "success", "text": "...", "intent": "..." }
+
       if (data.status === 'success') {
         result = data.text || '';
       } else if (data.status === 'error') {
-        result = data.text || 'Có lỗi xảy ra';
+        result = data.text || 'Co loi xay ra';
       } else if (data.status === 'clarify') {
-        result = data.text || 'Cần làm rõ thêm';
+        result = data.text || 'Can lam ro them';
       } else {
         result = data.text || data.result || data.message || '';
       }
@@ -94,11 +88,17 @@ export const sendToBackend = async (blob: Blob | null, promptText: string, setti
 
     console.log('Final result:', result);
     return String(result || '').trim();
-  } catch (fetchError: unknown) {
-    console.error('Fetch error:', fetchError);
-    if (fetchError instanceof Error && fetchError.name === 'TypeError' && fetchError.message.includes('fetch')) {
-      throw new Error('Không thể kết nối đến server. Kiểm tra địa chỉ server và kết nối mạng.');
+  } catch (error: unknown) {
+    console.error('Fetch error:', error);
+
+    if (
+      error instanceof Error &&
+      error.name === 'TypeError' &&
+      error.message.includes('fetch')
+    ) {
+      throw new Error('Khong the ket noi den server. Kiem tra dia chi server va mang.');
     }
-    throw fetchError;
+
+    throw error;
   }
 };
