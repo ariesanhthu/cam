@@ -10,6 +10,9 @@ import {
   unlockAudio,
 } from '../utils/speech';
 
+const REQUEST_CAPTURE_COOLDOWN_MS = 1500;
+const INTERIM_REQUEST_COMMIT_DELAY_MS = 1400;
+
 interface UseSpeechRecognitionProps {
   isProcessing: boolean;
   waitingForTrigger: boolean;
@@ -20,7 +23,6 @@ interface UseSpeechRecognitionProps {
   setIsListening?: (listening: boolean) => void;
   recognitionRef: React.MutableRefObject<SpeechRecognition | null>;
   shouldAutoListenRef: React.MutableRefObject<boolean>;
-  lastTTSEndTimeRef: React.MutableRefObject<number>;
 }
 
 const isDuplicateFinal = (
@@ -55,25 +57,148 @@ export const useSpeechRecognition = ({
   setIsListening,
   recognitionRef,
   shouldAutoListenRef,
-  lastTTSEndTimeRef,
 }: UseSpeechRecognitionProps) => {
   const lastCaptureTimeRef = useRef(0);
   const waitingForTriggerRef = useRef(waitingForTrigger);
   const waitingForRequestRef = useRef(waitingForRequest);
   const isProcessingRef = useRef(isProcessing);
+  const onTriggerWordRef = useRef(onTriggerWord);
+  const onUserRequestRef = useRef(onUserRequest);
+  const onStatusChangeRef = useRef(onStatusChange);
   const lastFinalNormalizedRef = useRef('');
   const lastFinalTimeRef = useRef(0);
   const triggerWordDetectedTimeRef = useRef(0);
+  const pendingRequestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRequestTextRef = useRef('');
 
   waitingForTriggerRef.current = waitingForTrigger;
   waitingForRequestRef.current = waitingForRequest;
   isProcessingRef.current = isProcessing;
+  onTriggerWordRef.current = onTriggerWord;
+  onUserRequestRef.current = onUserRequest;
+  onStatusChangeRef.current = onStatusChange;
 
   useEffect(() => {
     if (waitingForTrigger) {
       triggerWordDetectedTimeRef.current = 0;
+      pendingRequestTextRef.current = '';
+      if (pendingRequestTimerRef.current) {
+        clearTimeout(pendingRequestTimerRef.current);
+        pendingRequestTimerRef.current = null;
+      }
     }
   }, [waitingForTrigger]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingRequestTimerRef.current) {
+        clearTimeout(pendingRequestTimerRef.current);
+      }
+    };
+  }, []);
+
+  const clearPendingRequestCommit = useCallback(() => {
+    if (pendingRequestTimerRef.current) {
+      clearTimeout(pendingRequestTimerRef.current);
+      pendingRequestTimerRef.current = null;
+    }
+
+    pendingRequestTextRef.current = '';
+  }, []);
+
+  const buildRequestText = useCallback((rawText: string) => {
+    const trimmedText = rawText.trim();
+    const strippedText = stripLeadingTriggerPhrase(trimmedText);
+    return strippedText !== trimmedText ? strippedText : trimmedText;
+  }, []);
+
+  const submitRequestCandidate = useCallback(
+    (rawText: string, source: 'final' | 'interim-pause') => {
+      const now = Date.now();
+      const finalText = rawText.trim();
+      const requestText = buildRequestText(finalText);
+      const timeSinceTrigger =
+        triggerWordDetectedTimeRef.current > 0
+          ? now - triggerWordDetectedTimeRef.current
+          : Infinity;
+
+      console.log('[voice] request candidate:', {
+        source,
+        finalText,
+        requestText,
+        timeSinceTrigger,
+        waitingForRequest: waitingForRequestRef.current,
+        isProcessing: isProcessingRef.current,
+      });
+
+      if (
+        !finalText ||
+        !waitingForRequestRef.current ||
+        waitingForTriggerRef.current ||
+        isProcessingRef.current ||
+        isSpeaking()
+      ) {
+        return false;
+      }
+
+      if (timeSinceTrigger < REQUEST_AFTER_TRIGGER_DELAY_MS) {
+        onStatusChangeRef.current('Nghe được: ' + finalText + ' (đang chờ...)');
+        return false;
+      }
+
+      if (!requestText || isTriggerOnlyText(finalText)) {
+        onStatusChangeRef.current('Đã nghe "bạn ơi", hãy nói yêu cầu của bạn...');
+        return false;
+      }
+
+      if (now - lastCaptureTimeRef.current <= REQUEST_CAPTURE_COOLDOWN_MS) {
+        onStatusChangeRef.current('Nghe được: ' + requestText);
+        return false;
+      }
+
+      clearPendingRequestCommit();
+      lastCaptureTimeRef.current = now;
+      triggerWordDetectedTimeRef.current = 0;
+      waitingForRequestRef.current = false;
+      isProcessingRef.current = true;
+      onStatusChangeRef.current('Đã nghe yêu cầu, đang xử lý...');
+      console.log('[voice] submitting user request:', { source, requestText });
+      onUserRequestRef.current(requestText);
+      return true;
+    },
+    [buildRequestText, clearPendingRequestCommit]
+  );
+
+  const schedulePendingRequestCommit = useCallback(
+    (rawText: string) => {
+      const requestText = buildRequestText(rawText);
+
+      if (!requestText || isTriggerOnlyText(rawText)) {
+        clearPendingRequestCommit();
+        onStatusChangeRef.current('Đã nghe "bạn ơi", hãy nói yêu cầu của bạn...');
+        return;
+      }
+
+      if (pendingRequestTimerRef.current) {
+        clearTimeout(pendingRequestTimerRef.current);
+      }
+
+      pendingRequestTextRef.current = rawText;
+      onStatusChangeRef.current('Nghe được: ' + requestText + ' (đợi bạn nói xong...)');
+      console.log('[voice] scheduled interim request commit:', {
+        requestText,
+        delayMs: INTERIM_REQUEST_COMMIT_DELAY_MS,
+      });
+
+      pendingRequestTimerRef.current = setTimeout(() => {
+        const pendingText = pendingRequestTextRef.current;
+        pendingRequestTimerRef.current = null;
+        pendingRequestTextRef.current = '';
+        submitRequestCandidate(pendingText, 'interim-pause');
+      }, INTERIM_REQUEST_COMMIT_DELAY_MS);
+    },
+    [buildRequestText, clearPendingRequestCommit, submitRequestCandidate]
+  );
 
   const safeStartRecognition = useCallback(() => {
     if (!recognitionRef.current) return;
@@ -92,7 +217,7 @@ export const useSpeechRecognition = ({
       window.location.hostname !== 'localhost' &&
       !window.location.hostname.startsWith('127.0.0.')
     ) {
-      onStatusChange('Lỗi: Cần chạy trên HTTPS (hoặc localhost) để dùng Microphone');
+      onStatusChangeRef.current('Lỗi: Cần chạy trên HTTPS (hoặc localhost) để dùng Microphone');
       return false;
     }
 
@@ -101,7 +226,7 @@ export const useSpeechRecognition = ({
       (window as SpeechRecognitionWindow).webkitSpeechRecognition;
 
     if (!SpeechRecognitionCtor) {
-      onStatusChange('Trình duyệt không hỗ trợ nhận diện giọng nói');
+      onStatusChangeRef.current('Trình duyệt không hỗ trợ nhận diện giọng nói');
       return false;
     }
 
@@ -126,13 +251,16 @@ export const useSpeechRecognition = ({
     recognitionRef.current.onstart = () => {
       console.log('Speech recognition started');
       setIsListening?.(true);
-      onStatusChange('Đang nghe...');
+      onStatusChangeRef.current('Đang nghe...');
     };
 
     recognitionRef.current.onend = () => {
       console.log('Speech recognition ended');
       setIsListening?.(false);
-      onStatusChange('Đã dừng nghe');
+
+      if (!isSpeaking()) {
+        onStatusChangeRef.current('Đã dừng nghe');
+      }
 
       if (
         shouldAutoListenRef.current &&
@@ -158,13 +286,13 @@ export const useSpeechRecognition = ({
       console.log('Speech recognition error:', event.error);
 
       if (event.error === 'no-speech') {
-        onStatusChange('Không nghe thấy gì...');
+        onStatusChangeRef.current('Không nghe thấy gì...');
       } else if (event.error === 'not-allowed') {
-        onStatusChange('Lỗi: Bạn đã chặn Micro. Hãy cho phép trong cài đặt trình duyệt.');
+        onStatusChangeRef.current('Lỗi: Bạn đã chặn Micro. Hãy cho phép trong cài đặt trình duyệt.');
       } else if (event.error === 'network') {
-        onStatusChange('Lỗi mạng: Kiểm tra kết nối internet.');
+        onStatusChangeRef.current('Lỗi mạng: Kiểm tra kết nối internet.');
       } else if (event.error !== 'aborted') {
-        onStatusChange('Lỗi: ' + event.error);
+        onStatusChangeRef.current('Lỗi: ' + event.error);
       }
     };
 
@@ -186,6 +314,19 @@ export const useSpeechRecognition = ({
       if (isProcessingRef.current || isSpeaking()) return;
 
       if (waitingForTriggerRef.current) {
+        const interimText = interimTranscript.trim();
+        if (interimText && containsTriggerWord(interimText)) {
+          const now = Date.now();
+          clearPendingRequestCommit();
+          triggerWordDetectedTimeRef.current = now;
+          waitingForTriggerRef.current = false;
+          waitingForRequestRef.current = true;
+          lastFinalNormalizedRef.current = '';
+          lastFinalTimeRef.current = 0;
+          onTriggerWordRef.current();
+          return;
+        }
+
         const finalText = finalTranscript.trim();
         if (finalText) {
           const normalized = normalizeVN(finalText);
@@ -196,30 +337,29 @@ export const useSpeechRecognition = ({
           }
 
           if (containsTriggerWord(finalText)) {
-            const immediateRequest = stripLeadingTriggerPhrase(finalText);
-            if (immediateRequest && immediateRequest.split(/\s+/).length >= 2) {
-              lastCaptureTimeRef.current = now;
-              triggerWordDetectedTimeRef.current = 0;
-              onStatusChange('Đã nghe yêu cầu, đang xử lý...');
-              onUserRequest(immediateRequest);
-              return;
-            }
-
+            clearPendingRequestCommit();
             triggerWordDetectedTimeRef.current = now;
-            onTriggerWord();
+            waitingForTriggerRef.current = false;
+            waitingForRequestRef.current = true;
+            lastFinalNormalizedRef.current = '';
+            lastFinalTimeRef.current = 0;
+            onTriggerWordRef.current();
             return;
           }
         }
 
-        onStatusChange('Nghe được: ' + text + ' (chờ "bạn ơi!")');
+        onStatusChangeRef.current('Nghe được: ' + text + ' (chờ "bạn ơi!")');
         return;
       }
 
       if (!waitingForTriggerRef.current && waitingForRequestRef.current) {
         const finalText = finalTranscript.trim();
+        const interimText = interimTranscript.trim();
 
         if (!finalText) {
-          onStatusChange('Nghe được: ' + text);
+          if (interimText) {
+            schedulePendingRequestCommit(interimText);
+          }
           return;
         }
 
@@ -230,40 +370,11 @@ export const useSpeechRecognition = ({
           return;
         }
 
-        if (now - lastTTSEndTimeRef.current < POST_TTS_RECOGNITION_GUARD_MS) {
-          onStatusChange('Đang sẵn sàng lại sau khi đọc xong...');
+        if (submitRequestCandidate(finalText, 'final')) {
           return;
         }
 
-        const timeSinceTrigger =
-          triggerWordDetectedTimeRef.current > 0
-            ? now - triggerWordDetectedTimeRef.current
-            : Infinity;
-
-        if (timeSinceTrigger < REQUEST_AFTER_TRIGGER_DELAY_MS) {
-          onStatusChange('Nghe được: ' + finalText + ' (đang chờ...)');
-          return;
-        }
-
-        const strippedText = stripLeadingTriggerPhrase(finalText);
-        const requestText =
-          strippedText !== finalText.trim() ? strippedText : finalText.trim();
-
-        if (!requestText || isTriggerOnlyText(finalText)) {
-          onStatusChange('Đã nghe "bạn ơi", hãy nói yêu cầu của bạn...');
-          return;
-        }
-
-        if (requestText.split(/\s+/).length >= 2) {
-          if (now - lastCaptureTimeRef.current > 1500) {
-            lastCaptureTimeRef.current = now;
-            triggerWordDetectedTimeRef.current = 0;
-            onUserRequest(requestText);
-            return;
-          }
-        }
-
-        onStatusChange('Nghe được: ' + requestText);
+        schedulePendingRequestCommit(finalText);
         return;
       }
 
@@ -272,14 +383,13 @@ export const useSpeechRecognition = ({
 
     return true;
   }, [
-    onStatusChange,
-    onTriggerWord,
-    onUserRequest,
+    clearPendingRequestCommit,
     recognitionRef,
     safeStartRecognition,
+    schedulePendingRequestCommit,
     setIsListening,
     shouldAutoListenRef,
-    lastTTSEndTimeRef,
+    submitRequestCandidate,
   ]);
 
   const startListening = useCallback(async () => {

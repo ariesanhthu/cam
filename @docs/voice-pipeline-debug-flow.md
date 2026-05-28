@@ -1,3 +1,12 @@
+flow:
+
+User: "Bạn ơi"
+System: "Bạn cần giúp gì?"
+User: [yêu cầu]
+System: gửi yêu cầu lên backend, nhận kết quả
+System: đọc kết quả bằng TTS
+System: sau khi đọc xong, quay lại chờ "Bạn ơi"
+
 # Voice Pipeline Debug Flow cho `cam`
 
 Tài liệu này mô tả luồng thực tế của app `cam` theo source hiện tại, với mục tiêu:
@@ -1148,72 +1157,3 @@ Rủi ro:
 
 - transcript interim nhận sai gần giống `bạn ơi` có thể mở request mode sớm
 - nhất là trong môi trường ồn hoặc phát âm gần giống
-
-## 11. Test scenarios nên chạy khi debug
-
-### Scenario A. Happy path đầy đủ
-
-1. Bấm nút
-2. Nói `bạn ơi`
-3. Nghe prompt `Bạn cần giúp gì?`
-4. Nói yêu cầu có ít nhất 2 từ
-5. App lấy ảnh
-6. App gọi backend
-7. App đọc kết quả
-8. App quay về chờ trigger
-
-### Scenario B. Không có trigger
-
-1. Bấm nút
-2. Nói câu bất kỳ không chứa trigger
-3. Xem status có update `Nghe được... (chờ bạn ơi)` không
-
-### Scenario C. Trigger xong im lặng
-
-1. Nói `bạn ơi`
-2. Không nói tiếp
-3. Chờ `7000ms` hoặc `8000ms`
-4. App có reset về trigger mode không
-
-### Scenario D. Có trigger và request rất sát nhau
-
-1. Nói liền một câu kiểu `bạn ơi cho tôi biết...`
-2. Kiểm tra có bị chặn bởi delay `800ms` không
-
-### Scenario E. Backend lỗi / không kết nối
-
-1. Đặt backend sai URL
-2. Gửi request
-3. Quan sát error path, notification, status và khả năng quay về trigger mode
-
-### Scenario F. Browser không có `vi-VN`
-
-1. Dùng máy/browser không có voice tiếng Việt
-2. Kiểm tra app có fallback sang Zalo không
-
-### Scenario G. Zalo trả URL nhưng upstream audio chưa sẵn sàng
-
-1. Theo dõi `/api/tts/audio`
-2. Xem retry `404 -> retry` có xảy ra không
-
-### Scenario H. TTS xong rồi nói lại ngay
-
-1. Cho app đọc xong
-2. Nói lại ngay trong khoảng `< 1s`
-3. Kiểm tra anti-feedback có bỏ qua không
-
-## 12. Gợi ý trace nhanh khi debug live
-
-Nếu cần trace nhanh ngoài hiện trường, đi theo thứ tự này:
-
-1. Có `Speech recognition started` chưa
-2. Có `containsTriggerWord check` chưa
-3. Có `handleTriggerWord()` chưa
-4. Có `onUserRequest(finalText)` chưa
-5. Có `=== BACKEND REQUEST DEBUG ===` chưa
-6. Có `Final result:` chưa
-7. Có `=== SPEAK RESULT DEBUG ===` chưa
-8. Có `Speech synthesis ended` hoặc `Zalo TTS ended` chưa
-9. Có `Restarting speech recognition after TTS...` chưa
-
-Nếu bị đứt ở bước nào, khoanh vùng theo file của bước đó trước thay vì đọc cả hệ thống.

@@ -14,7 +14,7 @@ import { listFilesInBucket } from '../lib/supabase';
 
 export default function VoiceControlApp() {
   const [isListening, setIsListening] = useState(false);
-  const [status, setStatus] = useState('Bam nut de bat dau');
+  const [status, setStatus] = useState('Bấm nút để bắt đầu');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
@@ -58,12 +58,11 @@ export default function VoiceControlApp() {
     setIsListening,
     recognitionRef,
     shouldAutoListenRef,
-    lastTTSEndTimeRef,
   });
 
   useEffect(() => {
     setTimeout(() => {
-      showNotification('Chao mung! Bam nut de bat dau nghe giong noi');
+      showNotification('Chào mừng! Bấm nút để bắt đầu nghe giọng nói');
     }, 500);
   }, [showNotification]);
 
@@ -78,14 +77,14 @@ export default function VoiceControlApp() {
 
     try {
       console.log('[DEBUG] ===== START SUPABASE DEBUG =====');
-      console.log('[DEBUG] Dang lay anh tu Supabase...');
+      console.log('[DEBUG] Đang lấy ảnh từ Supabase...');
       console.log('[DEBUG] Bucket: cam, Path: cam01/image.jpg');
 
-      console.log('[DEBUG] Dang list files trong bucket "cam"...');
+      console.log('[DEBUG] Đang list files trong bucket "cam"...');
       const rootFiles = await listFilesInBucket('cam');
 
       if (rootFiles.length === 0) {
-        setImageError('Bucket "cam" dang trong. Vui long upload file vao folder "cam01".');
+        setImageError('Bucket "cam" đang trống. Vui lòng upload file vào folder "cam01".');
         console.warn('[DEBUG] Bucket "cam" trong');
         return;
       }
@@ -94,16 +93,16 @@ export default function VoiceControlApp() {
 
       const hasCam01Folder = rootFiles.some((file) => file === 'cam01' || file.includes('cam01'));
       if (!hasCam01Folder) {
-        setImageError(`Folder "cam01" khong ton tai. Items san co: ${rootFiles.join(', ')}`);
+        setImageError(`Folder "cam01" không tồn tại. Items sẵn có: ${rootFiles.join(', ')}`);
         console.warn('[DEBUG] Folder "cam01" khong co trong bucket');
         return;
       }
 
-      console.log('[DEBUG] Dang list files trong folder "cam01"...');
+      console.log('[DEBUG] Đang list files trong folder "cam01"...');
       const cam01Files = await listFilesInBucket('cam', 'cam01');
 
       if (cam01Files.length === 0) {
-        setImageError('Folder "cam01" dang trong. Vui long upload file "image.jpg".');
+        setImageError('Folder "cam01" đang trống. Vui lòng upload file "image.jpg".');
         console.warn('[DEBUG] Folder "cam01" trong');
         return;
       }
@@ -113,7 +112,7 @@ export default function VoiceControlApp() {
       const hasImageJpg = cam01Files.some((file) => file.includes('image.jpg'));
       if (!hasImageJpg) {
         setImageError(
-          `File "image.jpg" khong ton tai trong "cam01". Files san co: ${cam01Files.join(', ')}`
+          `File "image.jpg" không tồn tại trong "cam01". Files sẵn có: ${cam01Files.join(', ')}`
         );
         console.warn('[DEBUG] File "image.jpg" khong co trong folder "cam01"');
         return;
@@ -123,15 +122,15 @@ export default function VoiceControlApp() {
       if (blob) {
         const nextImageUrl = URL.createObjectURL(blob);
         setImageUrl(nextImageUrl);
-        console.log('[DEBUG] Lay anh thanh cong, size:', blob.size, 'bytes');
+        console.log('[DEBUG] Lấy ảnh thành công, size:', blob.size, 'bytes');
       } else {
-        setImageError('Khong lay duoc anh tu Supabase. Co the do policy hoac permissions.');
+        setImageError('Không lấy được ảnh từ Supabase. Có thể do policy hoặc permissions.');
         console.warn('[DEBUG] Blob null khi lay anh tu Supabase');
       }
 
       console.log('[DEBUG] ===== END SUPABASE DEBUG =====');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Loi khong xac dinh';
+      const errorMessage = error instanceof Error ? error.message : 'Lỗi không xác định';
       setImageError(errorMessage);
       console.error('[DEBUG] Exception khi lay anh:', error);
     } finally {
@@ -176,7 +175,7 @@ export default function VoiceControlApp() {
       {!loaded && (
         <div className="fixed inset-0 flex items-center justify-center bg-white/70 dark:bg-black/70 z-50">
           <div className="px-4 py-2 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
-            Dang tai cau hinh...
+            Đang tải cấu hình...
           </div>
         </div>
       )}
@@ -200,7 +199,7 @@ export default function VoiceControlApp() {
         className={`fixed top-5 right-5 w-15 h-15 rounded-full border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-black text-black dark:text-white text-2xl cursor-pointer shadow-lg transition-opacity duration-300 ${
           settingsOpen ? 'opacity-0 pointer-events-none' : 'opacity-100 z-50'
         }`}
-        aria-label="Mo cai dat"
+        aria-label="Mở cài đặt"
       >
         ⚙️
       </button>
@@ -213,15 +212,15 @@ export default function VoiceControlApp() {
         onSave={async () => {
           try {
             await saveSettings();
-            showNotification('Da luu cai dat thanh cong!');
+            showNotification('Đã lưu cài đặt thành công!');
             await reloadFromDb();
           } catch {
-            showNotification('Da luu cai dat local');
+            showNotification('Đã lưu cài đặt local');
           }
         }}
         onReset={() => {
           resetSettings();
-          showNotification('Da reset ve mac dinh!');
+          showNotification('Đã reset về mặc định!');
         }}
         imageUrl={imageUrl}
         imageLoading={imageLoading}

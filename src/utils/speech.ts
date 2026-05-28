@@ -13,9 +13,10 @@ export const TRIGGER_PHRASES = [
 
 export const REQUEST_AFTER_TRIGGER_DELAY_MS = 800;
 export const POST_TTS_RECOGNITION_GUARD_MS = 1000;
+const TTS_RESTART_DELAY_MS = 300;
 
-const LEADING_TRIGGER_REGEX =
-  /^\s*(?:(?:bạn|ban|ba|bác|bac|bằng|bang)\s+(?:ơi|oi|nội|noi)|hey\s+you)(?:[\s,.:!?-]+(?:(?:bạn|ban|ba|bác|bac|bằng|bang)\s+(?:ơi|oi|nội|noi)|hey\s+you))*[\s,.:!?-]*/iu;
+let currentZaloAudio: HTMLAudioElement | null = null;
+let ttsPlaybackActive = false;
 
 export const normalizeVN = (str: string): string => {
   return (str || "")
@@ -27,44 +28,77 @@ export const normalizeVN = (str: string): string => {
     .trim();
 };
 
+const TRIGGER_TOKEN_PATTERNS = TRIGGER_PHRASES.map((trigger) =>
+  trigger.split(/\s+/).filter(Boolean)
+).sort((a, b) => b.length - a.length);
+
+type NormalizedToken = {
+  value: string;
+  start: number;
+};
+
+const getNormalizedTokens = (text: string): NormalizedToken[] => {
+  return Array.from((text || "").matchAll(/[\p{L}\p{N}]+/gu))
+    .map((match) => ({
+      value: normalizeVN(match[0]),
+      start: match.index ?? 0,
+    }))
+    .filter((token) => token.value);
+};
+
+const matchTriggerAt = (tokens: NormalizedToken[], startIndex: number): number => {
+  for (const pattern of TRIGGER_TOKEN_PATTERNS) {
+    const matched = pattern.every(
+      (value, offset) => tokens[startIndex + offset]?.value === value
+    );
+
+    if (matched) return pattern.length;
+  }
+
+  return 0;
+};
+
 export const containsTriggerWord = (text: string): boolean => {
   const normalized = normalizeVN(text);
-  const hasTrigger = TRIGGER_PHRASES.some((trigger) => normalized.includes(trigger));
+  const tokens = getNormalizedTokens(text);
+  const hasTrigger = tokens.some((_, index) => matchTriggerAt(tokens, index) > 0);
 
   console.log("containsTriggerWord check:", { text, normalized, hasTrigger });
   return hasTrigger;
 };
 
 export const stripLeadingTriggerPhrase = (text: string): string => {
-  return (text || "").replace(LEADING_TRIGGER_REGEX, "").trim();
+  const rawText = text || "";
+  const tokens = getNormalizedTokens(rawText);
+  let index = 0;
+  let consumedTrigger = false;
+
+  while (index < tokens.length) {
+    const triggerLength = matchTriggerAt(tokens, index);
+    if (!triggerLength) break;
+
+    consumedTrigger = true;
+    index += triggerLength;
+  }
+
+  if (!consumedTrigger) return rawText.trim();
+  if (index >= tokens.length) return "";
+
+  return rawText.slice(tokens[index].start).replace(/^[\s,.:!?-]+/, "").trim();
 };
 
 export const isTriggerOnlyText = (text: string): boolean => {
-  const normalized = normalizeVN(text);
-  if (!normalized) return false;
-
-  let remaining = normalized;
-
-  while (remaining) {
-    const matchedTrigger = TRIGGER_PHRASES.find(
-      (trigger) => remaining === trigger || remaining.startsWith(`${trigger} `)
-    );
-
-    if (!matchedTrigger) {
-      return false;
-    }
-
-    remaining =
-      remaining === matchedTrigger
-        ? ""
-        : remaining.slice(matchedTrigger.length).trim();
-  }
-
-  return true;
+  return normalizeVN(text).length > 0 && stripLeadingTriggerPhrase(text) === "";
 };
 
 export const isSpeaking = (): boolean => {
   if (typeof window === "undefined") return false;
+  if (ttsPlaybackActive) return true;
+
+  if (currentZaloAudio && !currentZaloAudio.paused && !currentZaloAudio.ended) {
+    return true;
+  }
+
   if (typeof speechSynthesis === "undefined") return false;
   return speechSynthesis.speaking || speechSynthesis.pending;
 };
@@ -152,6 +186,8 @@ const shouldUseZaloFallback = async (ttsLanguage?: "vi-VN" | "en-US") => {
   if (ttsLanguage !== "vi-VN") return false;
   if (typeof window === "undefined" || typeof speechSynthesis === "undefined") return true;
 
+  await waitVoicesReady(1000);
+
   try {
     const voices = speechSynthesis.getVoices();
     if (!voices || voices.length === 0) return true;
@@ -190,9 +226,13 @@ const stopRecognition = (recognitionRef?: React.RefObject<SpeechRecognition | nu
 const restartRecognitionWithDelay = (
   recognitionRef?: React.RefObject<SpeechRecognition | null>,
   shouldAutoListenRef?: React.MutableRefObject<boolean>,
-  delayMs: number = POST_TTS_RECOGNITION_GUARD_MS
+  delayMs: number = TTS_RESTART_DELAY_MS,
+  onRestart?: () => void
 ) => {
-  if (!recognitionRef?.current || !shouldAutoListenRef) return;
+  if (!recognitionRef?.current || !shouldAutoListenRef) {
+    onRestart?.();
+    return;
+  }
 
   setTimeout(() => {
     console.log("Restarting speech recognition after TTS...");
@@ -203,11 +243,12 @@ const restartRecognitionWithDelay = (
       console.log("Speech recognition restarted after TTS");
     } catch (error) {
       console.log("Failed to restart speech recognition:", error);
+    } finally {
+      onRestart?.();
     }
   }, delayMs);
 };
 
-let currentZaloAudio: HTMLAudioElement | null = null;
 let ttsQueue: Promise<unknown> = Promise.resolve();
 
 const enqueueTTS = <T,>(fn: () => Promise<T>): Promise<T> => {
@@ -248,6 +289,7 @@ export async function speakWithZaloTTS(
   }
 ) {
   stopAllTTS();
+  console.log("Requesting Zalo TTS audio...");
 
   const response = await fetch("/api/tts", {
     method: "POST",
@@ -270,12 +312,14 @@ export async function speakWithZaloTTS(
     throw new Error("Missing audio url");
   }
 
+  console.log("Playing Zalo TTS audio:", url);
   const audio = new Audio(`/api/tts/audio?url=${encodeURIComponent(url)}`);
   audio.volume = Math.max(0, Math.min(1, settings.voiceVolume ?? 1));
   currentZaloAudio = audio;
 
   await new Promise<void>((resolve, reject) => {
     audio.onended = () => {
+      console.log("Zalo TTS audio ended");
       if (currentZaloAudio === audio) currentZaloAudio = null;
       resolve();
     };
@@ -319,41 +363,63 @@ const speakWithBrowserTTS = async (
   }
 
   if (utterance.lang === "vi-VN" && !picked) {
-    console.log("No Vietnamese voice in browser, browser TTS skipped");
+    console.warn("No Vietnamese voice in browser, browser TTS skipped");
     return false;
   }
 
-  await new Promise<void>((resolve) => {
+  const didSpeak = await new Promise<boolean>((resolve) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      console.warn("Speech synthesis timed out before finishing");
+
+      try {
+        speechSynthesis.cancel();
+      } catch {}
+
+      resolve(false);
+    }, Math.max(4000, text.length * 140));
+
+    const finish = (success: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(success);
+    };
+
     utterance.onstart = () => {
       console.log("Speech synthesis started");
     };
 
     utterance.onend = () => {
       console.log("Speech synthesis ended");
-      resolve();
+      finish(true);
     };
 
     utterance.onerror = (error) => {
       console.log("Speech synthesis error:", error);
-      resolve();
+      finish(false);
     };
 
-    speechSynthesis.speak(utterance);
+    try {
+      speechSynthesis.cancel();
+      speechSynthesis.speak(utterance);
+    } catch (error) {
+      console.log("Speech synthesis speak failed:", error);
+      finish(false);
+    }
   });
 
-  return true;
+  return didSpeak;
 };
 
 const resolveTTSProvider = async (
-  settings: SpeakSettings,
+  _settings: SpeakSettings,
   ttsLanguage: "vi-VN" | "en-US"
 ): Promise<TTSProvider> => {
   if (ttsLanguage === "en-US") {
     return "browser";
-  }
-
-  if (settings.ttsProvider === "zalo") {
-    return "zalo";
   }
 
   return (await shouldUseZaloFallback(ttsLanguage)) ? "zalo" : "browser";
@@ -371,13 +437,22 @@ const speakWithResolvedProvider = async (
   console.log(`[${debugLabel}] Using ${provider} TTS`);
 
   if (provider === "zalo") {
-    await speakWithZaloTTS(text, {
-      voiceVolume: settings.voiceVolume,
-      zaloSpeakerId: settings.zaloSpeakerId ?? 1,
-      zaloSpeed: settings.zaloSpeed ?? 1.0,
-      zaloEncodeType: settings.zaloEncodeType ?? 1,
-    });
-    return;
+    try {
+      await speakWithZaloTTS(text, {
+        voiceVolume: settings.voiceVolume,
+        zaloSpeakerId: settings.zaloSpeakerId ?? 1,
+        zaloSpeed: settings.zaloSpeed ?? 1.0,
+        zaloEncodeType: settings.zaloEncodeType ?? 1,
+      });
+      return;
+    } catch (error) {
+      console.error(`[${debugLabel}] Zalo TTS failed, trying browser fallback`, error);
+
+      const didSpeakInBrowser = await speakWithBrowserTTS(text, settings, ttsLanguage);
+      if (didSpeakInBrowser) return;
+
+      throw error;
+    }
   }
 
   const didSpeakInBrowser = await speakWithBrowserTTS(text, settings, ttsLanguage);
@@ -405,12 +480,14 @@ export const speakText = async (
   recognitionRef?: React.RefObject<SpeechRecognition | null>,
   shouldAutoListenRef?: React.MutableRefObject<boolean>,
   lastTTSEndTimeRef?: React.MutableRefObject<number>,
-  onEnd?: () => void
+  onEnd?: () => void,
+  onRestart?: () => void
 ): Promise<void> => {
   return enqueueTTS(async () => {
     console.log("=== SPEAK TEXT DEBUG ===");
     console.log("Speaking text:", text);
 
+    ttsPlaybackActive = true;
     stopRecognition(recognitionRef);
     if (shouldAutoListenRef) {
       shouldAutoListenRef.current = false;
@@ -429,8 +506,14 @@ export const speakText = async (
         console.log("TTS end timestamp set:", lastTTSEndTimeRef.current);
       }
 
+      ttsPlaybackActive = false;
       onEnd?.();
-      restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef);
+      restartRecognitionWithDelay(
+        recognitionRef,
+        shouldAutoListenRef,
+        TTS_RESTART_DELAY_MS,
+        onRestart
+      );
     }
   });
 };
@@ -448,6 +531,7 @@ export const speakResult = async (
     console.log("=== SPEAK RESULT DEBUG ===");
     console.log("Speaking result:", text);
 
+    ttsPlaybackActive = true;
     stopRecognition(recognitionRef);
     if (shouldAutoListenRef) {
       shouldAutoListenRef.current = false;
@@ -467,6 +551,7 @@ export const speakResult = async (
         console.log("TTS end timestamp set:", lastTTSEndTimeRef.current);
       }
 
+      ttsPlaybackActive = false;
       onEnd?.();
       restartRecognitionWithDelay(recognitionRef, shouldAutoListenRef);
     }

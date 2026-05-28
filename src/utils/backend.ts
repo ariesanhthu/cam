@@ -7,14 +7,14 @@ export const sendToBackend = async (
 ): Promise<string> => {
   const backendUrl = settings.backendUrl.trim();
   if (!backendUrl) {
-    throw new Error('Chua cai dat dia chi server');
+    throw new Error('Chưa cài đặt địa chỉ server');
   }
 
   let apiUrl: string;
   try {
     apiUrl = new URL(backendUrl).toString();
   } catch {
-    throw new Error('Dia chi server khong hop le');
+    throw new Error('Địa chỉ server không hợp lệ');
   }
 
   const formData = new FormData();
@@ -75,9 +75,9 @@ export const sendToBackend = async (
       if (data.status === 'success') {
         result = data.text || '';
       } else if (data.status === 'error') {
-        result = data.text || 'Co loi xay ra';
+        result = data.text || 'Có lỗi xảy ra';
       } else if (data.status === 'clarify') {
-        result = data.text || 'Can lam ro them';
+        result = data.text || 'Cần làm rõ thêm';
       } else {
         result = data.text || data.result || data.message || '';
       }
@@ -96,7 +96,7 @@ export const sendToBackend = async (
       error.name === 'TypeError' &&
       error.message.includes('fetch')
     ) {
-      throw new Error('Khong the ket noi den server. Kiem tra dia chi server va mang.');
+      throw new Error('Không thể kết nối đến server. Kiểm tra địa chỉ server và mạng.');
     }
 
     throw error;
