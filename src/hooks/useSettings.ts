@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Settings } from '../types';
 
 const defaultSettings: Settings = {
-  backendUrl: 'http://localhost:5000/analyze',
+  backendUrl: process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000/analyze',
   useDeviceCamera: true,
   speak: true,
   voiceRate: 1,
