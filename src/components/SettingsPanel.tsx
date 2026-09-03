@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings } from '../types';
+import { Settings, TTSProvider } from '../types';
 
 interface SettingsPanelProps {
   settingsOpen: boolean;
@@ -212,7 +212,7 @@ export const SettingsPanel = ({
           <select
             value={settings.ttsProvider}
             onChange={(e) =>
-              onSettingsChange({ ...settings, ttsProvider: e.target.value as any })
+              onSettingsChange({ ...settings, ttsProvider: e.target.value as TTSProvider })
             }
             disabled={settings.language === "en"} // English -> Browser TTS thôi (Zalo chỉ hỗ trợ tiếng Việt)
             className="w-full p-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg text-base bg-white dark:bg-gray-800 text-black dark:text-white mb-4 disabled:opacity-50"

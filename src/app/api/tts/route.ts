@@ -67,7 +67,7 @@ export async function POST(req: Request) {
   // form.set("quality", String(body.quality ?? 0)); // nếu bạn dùng gói trả phí thì mở
 
   // Thử từng key cho đến khi thành công
-  let lastError: any = null;
+  let lastError: unknown = null;
   
   for (let i = 0; i < apiKeys.length; i++) {
     const apikey = apiKeys[i];
