@@ -166,13 +166,13 @@ export const SettingsPanel = ({
               className="w-6 h-6 cursor-pointer"
             />
             <label htmlFor="chkUseDeviceCamera" className="font-medium text-sm">
-              ON: chụp từ thiết bị • OFF: lấy ảnh từ Supabase
+              ON: chụp từ thiết bị • OFF: lấy ảnh local từ Backend
             </label>
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-400">
             {settings.useDeviceCamera
               ? 'Đang bật: sẽ chụp ảnh từ camera thiết bị khi gửi yêu cầu'
-              : 'Đang tắt: sẽ lấy ảnh từ Supabase (cam01/image.jpg) khi gửi yêu cầu'}
+              : 'Đang tắt: sẽ lấy ảnh từ Backend (/camera/image) khi gửi yêu cầu'}
           </p>
         </div>
 
@@ -234,7 +234,7 @@ export const SettingsPanel = ({
         {activeTab === 'debug' && (
           <div className="space-y-6">
             <div className="p-5 border border-gray-300 dark:border-gray-600 rounded-lg">
-              <h2 className="text-lg font-bold mb-4 text-sky-500">Debug: Ảnh từ Supabase</h2>
+              <h2 className="text-lg font-bold mb-4 text-sky-500">Debug: Ảnh local từ Backend</h2>
               
               {onRefreshImage && (
                 <button
@@ -254,18 +254,6 @@ export const SettingsPanel = ({
               {imageError && (
                 <div className="p-4 border border-red-500 rounded bg-red-50 dark:bg-red-900/20">
                   <p className="text-red-600 dark:text-red-400 font-semibold mb-2">⚠️ Lỗi: {imageError}</p>
-                  {imageError.includes('Bucket "cam" đang trống') && (
-                    <div className="mt-3 text-sm text-red-700 dark:text-red-300">
-                      <p className="font-semibold mb-1">Hướng dẫn:</p>
-                      <ol className="list-decimal list-inside space-y-1">
-                        <li>Vào Supabase Dashboard</li>
-                        <li>Chọn Storage → Bucket "cam"</li>
-                        <li>Tạo folder "cam01" (nếu chưa có)</li>
-                        <li>Upload file ảnh với tên "image.jpg" vào folder "cam01"</li>
-                        <li>Nhấn Refresh Ảnh để kiểm tra</li>
-                      </ol>
-                    </div>
-                  )}
                 </div>
               )}
               
@@ -274,7 +262,7 @@ export const SettingsPanel = ({
                   <p className="text-green-600 dark:text-green-400 mb-2">✓ Đã tải ảnh thành công!</p>
                   <img 
                     src={imageUrl} 
-                    alt="Ảnh từ Supabase" 
+                    alt="Ảnh local từ Backend" 
                     className="max-w-full h-auto rounded shadow-lg"
                     onError={(e) => {
                       console.error('[DEBUG] Lỗi hiển thị ảnh:', e);

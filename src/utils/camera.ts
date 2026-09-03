@@ -1,53 +1,56 @@
-import { fetchImageFromSupabase } from '../lib/supabase';
-
-// Type definition for ImageCapture API
 interface ImageCaptureWindow extends Window {
   ImageCapture?: typeof ImageCapture;
 }
 
-// Fetch image from Supabase storage
-export const fetchImageFromSupabaseStorage = async (): Promise<Blob | null> => {
-  try {
-    const blob = await fetchImageFromSupabase('cam', 'cam01/image.jpg');
-    return blob;
-  } catch (error: unknown) {
-    throw new Error('Lỗi tải ảnh từ Supabase: ' + (error instanceof Error ? error.message : 'Unknown error'));
-  }
+const backendBaseUrl = (backendUrl: string): string => {
+  const url = new URL(backendUrl);
+  url.pathname = url.pathname.replace(/\/?analyze\/?$/, '');
+  url.search = '';
+  url.hash = '';
+  return url.toString().replace(/\/$/, '');
 };
 
-// Capture from device camera
-export const captureFromDeviceCamera = async (): Promise<Blob> => {
-  const stream = await navigator.mediaDevices.getUserMedia({ 
-    video: { facingMode: 'environment' } 
+export const fetchImageFromBackend = async (backendUrl: string): Promise<Blob> => {
+  const response = await fetch(`${backendBaseUrl(backendUrl)}/camera/image`, {
+    cache: 'no-store',
   });
-  
+  if (!response.ok) {
+    const message = response.status === 404
+      ? 'Backend chưa có ảnh camera local'
+      : `Không thể tải ảnh từ backend (HTTP ${response.status})`;
+    throw new Error(message);
+  }
+  return response.blob();
+};
+
+export const captureFromDeviceCamera = async (): Promise<Blob> => {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment' },
+  });
+
   try {
     const track = stream.getVideoTracks()[0];
-    const imageCapture = ('ImageCapture' in window) && (window as ImageCaptureWindow).ImageCapture ? new (window as ImageCaptureWindow).ImageCapture!(track) : null;
-    let blob: Blob;
-    
-    if (imageCapture && imageCapture.takePhoto) {
-      blob = await imageCapture.takePhoto();
-    } else {
-      // Fallback: draw frame to canvas
-      const video = document.createElement('video');
-      video.srcObject = stream;
-      await new Promise(r => video.onloadedmetadata = r);
-      video.play();
-      await new Promise(r => setTimeout(r, 150));
-      
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
-      const ctx = canvas.getContext('2d');
-      ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
-      
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-      const res = await fetch(dataUrl);
-      blob = await res.blob();
-    }
+    const imageCapture = 'ImageCapture' in window && (window as ImageCaptureWindow).ImageCapture
+      ? new (window as ImageCaptureWindow).ImageCapture!(track)
+      : null;
+    if (imageCapture?.takePhoto) return await imageCapture.takePhoto();
+
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    await new Promise<void>((resolve) => {
+      video.onloadedmetadata = () => resolve();
+    });
+    await video.play();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+    if (!blob) throw new Error('Không thể tạo ảnh từ camera thiết bị');
     return blob;
   } finally {
-    stream.getTracks().forEach(t => t.stop());
+    stream.getTracks().forEach((track) => track.stop());
   }
 };

@@ -9,8 +9,7 @@ import { VoiceControlButton } from '../components/VoiceControlButton';
 import { StatusDisplay } from '../components/StatusDisplay';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { NotificationToast } from '../components/NotificationToast';
-import { fetchImageFromSupabaseStorage } from '../utils/camera';
-import { listFilesInBucket } from '../lib/supabase';
+import { fetchImageFromBackend } from '../utils/camera';
 
 export default function VoiceControlApp() {
   const [isListening, setIsListening] = useState(false);
@@ -24,7 +23,7 @@ export default function VoiceControlApp() {
   const shouldAutoListenRef = useRef(false);
   const lastTTSEndTimeRef = useRef(0);
 
-  const { settings, setSettings, saveSettings, resetSettings, reloadFromDb, loaded } =
+  const { settings, setSettings, saveSettings, resetSettings, reloadFromLocal, loaded } =
     useSettings();
   const { notification, showNotification } = useNotification({ settings, recognitionRef });
 
@@ -76,59 +75,9 @@ export default function VoiceControlApp() {
     setImageError(null);
 
     try {
-      console.log('[DEBUG] ===== START SUPABASE DEBUG =====');
-      console.log('[DEBUG] Đang lấy ảnh từ Supabase...');
-      console.log('[DEBUG] Bucket: cam, Path: cam01/image.jpg');
-
-      console.log('[DEBUG] Đang list files trong bucket "cam"...');
-      const rootFiles = await listFilesInBucket('cam');
-
-      if (rootFiles.length === 0) {
-        setImageError('Bucket "cam" đang trống. Vui lòng upload file vào folder "cam01".');
-        console.warn('[DEBUG] Bucket "cam" trong');
-        return;
-      }
-
-      console.log('[DEBUG] Tim thay items trong bucket root:', rootFiles);
-
-      const hasCam01Folder = rootFiles.some((file) => file === 'cam01' || file.includes('cam01'));
-      if (!hasCam01Folder) {
-        setImageError(`Folder "cam01" không tồn tại. Items sẵn có: ${rootFiles.join(', ')}`);
-        console.warn('[DEBUG] Folder "cam01" khong co trong bucket');
-        return;
-      }
-
-      console.log('[DEBUG] Đang list files trong folder "cam01"...');
-      const cam01Files = await listFilesInBucket('cam', 'cam01');
-
-      if (cam01Files.length === 0) {
-        setImageError('Folder "cam01" đang trống. Vui lòng upload file "image.jpg".');
-        console.warn('[DEBUG] Folder "cam01" trong');
-        return;
-      }
-
-      console.log('[DEBUG] Tim thay files trong folder "cam01":', cam01Files);
-
-      const hasImageJpg = cam01Files.some((file) => file.includes('image.jpg'));
-      if (!hasImageJpg) {
-        setImageError(
-          `File "image.jpg" không tồn tại trong "cam01". Files sẵn có: ${cam01Files.join(', ')}`
-        );
-        console.warn('[DEBUG] File "image.jpg" khong co trong folder "cam01"');
-        return;
-      }
-
-      const blob = await fetchImageFromSupabaseStorage();
-      if (blob) {
-        const nextImageUrl = URL.createObjectURL(blob);
-        setImageUrl(nextImageUrl);
-        console.log('[DEBUG] Lấy ảnh thành công, size:', blob.size, 'bytes');
-      } else {
-        setImageError('Không lấy được ảnh từ Supabase. Có thể do policy hoặc permissions.');
-        console.warn('[DEBUG] Blob null khi lay anh tu Supabase');
-      }
-
-      console.log('[DEBUG] ===== END SUPABASE DEBUG =====');
+      const blob = await fetchImageFromBackend(settings.backendUrl);
+      const nextImageUrl = URL.createObjectURL(blob);
+      setImageUrl(nextImageUrl);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Lỗi không xác định';
       setImageError(errorMessage);
@@ -136,7 +85,7 @@ export default function VoiceControlApp() {
     } finally {
       setImageLoading(false);
     }
-  }, [imageUrl]);
+  }, [imageUrl, settings.backendUrl]);
 
   useEffect(() => {
     return () => {
@@ -213,7 +162,7 @@ export default function VoiceControlApp() {
           try {
             await saveSettings();
             showNotification('Đã lưu cài đặt thành công!');
-            await reloadFromDb();
+            await reloadFromLocal();
           } catch {
             showNotification('Đã lưu cài đặt local');
           }

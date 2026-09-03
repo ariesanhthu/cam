@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { Settings } from '../types';
-import { captureFromDeviceCamera, fetchImageFromSupabaseStorage } from '../utils/camera';
+import { captureFromDeviceCamera, fetchImageFromBackend } from '../utils/camera';
 import { sendToBackend } from '../utils/backend';
 import { speakResult, speakText, type SpeakSettings } from '../utils/speech';
 
@@ -97,7 +97,7 @@ export const useVoiceControl = ({
           showNotification('Đã chụp ảnh từ thiết bị');
           setStatus('Chụp ảnh từ thiết bị thành công');
         } else {
-          blob = await fetchImageFromSupabaseStorage();
+          blob = await fetchImageFromBackend(settings.backendUrl);
         }
 
         setStatus('Đang gửi đến server...');
